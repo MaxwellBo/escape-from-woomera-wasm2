@@ -1,0 +1,9 @@
+{
+  "name": "escape-from-woomera-wasm2",
+  "private": true,
+  "type": "module",
+  "description": "Recovered gameplay model of the Escape from Woomera Half-Life prototype.",
+  "scripts": {
+    "test": "node --test"
+  }
+}
