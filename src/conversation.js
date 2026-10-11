@@ -13,7 +13,7 @@ export const STARTUP_TOPICS = ["ESCAPE", "GREET", "GOODBYE"];
 
 const QUESTION = /^Q(?:<([^>]*)>)?:\s*(.*)$/;
 const ANSWER = /^A(?:<([^>]*)>)?:\s*(.*)$/;
-const COMMAND = /([A-Za-z_][A-Za-z0-9_]*)(?:\(([^)]*)\))?/g;
+const COMMAND = /([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(([^)]*)\))?/g;
 
 export function parseFlags(spec) {
   if (!spec) return [];

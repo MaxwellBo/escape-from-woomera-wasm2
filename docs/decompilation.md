@@ -87,3 +87,22 @@ Client storyboard names mark the chapter changes and endings: introduction, hidi
 - Whether `DAT_10134874` is frame time or a slower tick. The decay formula uses it as a time step; the call period of `FUN_100c6b60` was not recovered.
 - The full flex grammar. The line shape above is what the shipped scripts and the loader strings support. The generated parser was not decompiled function by function.
 - Most of `EscapeFromWoomera.dll` is Spirit of Half-Life. Those functions were not re-copied here.
+
+## Browser engine
+
+The playable page runs [Xash3D FWGS](https://github.com/FWGS/xash3d-fwgs) from the `xash3d-fwgs@1.2.2` package (engine commit `7c58854`). That is a GoldSrc-compatible engine, not a new renderer. The game libraries are Spirit of Half-Life 1.2 (`hlsdk-portable` `c0dd993d82fb9ecad98eadf1ad392b7b2e6d3226`) with the mod entities added in `engine/efw/` and the hooks in `engine/sohl-efw.patch`. `scripts/build-wasm.sh` rebuilds those side modules. The published Windows DLLs are not loaded in the browser; the Emscripten build links the same entity names (`monster_refugee`, `efw_Marker`, `monster_patrol_guard`, `monster_efw_guard`, `env_flag`, `weapon_efw_*`) into the engine’s server and client slots.
+
+`engine/efw/efw_game.cpp` is a structured port of the recovered grammar and the hope formula. It is not Ghidra’s C compiled as-is. The client reads one `EFWShow` layout written by that port (kind byte, hope byte, line count, strings). That layout is the browser HUD. It is not the slot protocol observed in `client.dll`.
+
+These choices are not recovered facts:
+
+- Hope starts at 100 so the recovered decay can reach 0. The DLL’s initial store was not found.
+- The decay step is `gpGlobals->frametime`. Whether `DAT_10134874` is frame time is unknown.
+- The level-1 player is given `weapon_efw_IDTag` once. The scripts and markers use the tag; the DLL’s spawn grant was not isolated.
+- `efw_GetPackage` applies the recovered +15 hope bonus. Diary lines do not add hope.
+- A guard on level 2 ends the game when the player is within 180 units and not inside `efw_hiding_place`. The DLL’s hearing and line-of-sight checks are more specific than that radius.
+- The electrician must be at least 160 units away before the pliers marker gives `weapon_efw_Pliers`.
+- Choosing “Give him the pliers” while talking to Amir is the stand-in for `efw_Give`. The pliers topic in the script does not itself end the game.
+- Officers stay `monster_barney` so Spirit’s AI remains, and their model is `models/Security.mdl` from the prototype. `models/barney.mdl` is not in the release.
+- `env_flag` is exported and does nothing. The shipped maps do not use it.
+- Map skies named `dashdesert256` are the prototype’s `day256` images under that name. Valve’s `valve/` wads and `gfx/shell` bitmaps are not in this tree. Xash’s own `extras.pk3` supplies the menu font and shell. Textures that lived only in the commercial wads stay missing.

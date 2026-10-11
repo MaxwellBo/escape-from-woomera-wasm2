@@ -1,0 +1,46 @@
+
+Q<GREET FirstTime>: Hello Hassan.
+A: Mustafa my friend, you look how I feel. [AddTopic(GREET_HASSAN_SUBSEQUENT)]
+#Q: To be honest, I'm feeling pretty depressed...
+ A: What is happening to us in here? All the time people, children even, are attempting to commit suicide! Everyone is taking antidepressants, it shouldn't be like this! Animals in Australia have more rights than we do! They are valued more than we are.
+#Q: I've had some bad news.
+ A: What is it?
+##Q: My application has been rejected. They will send me back to Iran.
+  A: That is terrible! Didn't they already kill your family. I can't believe they don't know, or care, that you will be taken away and never seen again.
+##Q: It doesn't matter. There is only bad news in this place.
+  A: That is all too true, my friend. But we must somehow try to keep hope alive.
+
+Q<GREET_HASSAN_SUBSEQUENT>: Hello Hassan.
+A: Greetings again, my friend.
+
+Q<ESCAPE>: I must escape from here.
+A: We would all like to do this, but then where would we go, what would we do? It is hopeless.
+
+Q<PLIERS>: I’m looking for a pair of pliers.
+A: I would like to help you, but that’s something I don’t have.
+
+Q<ELECTRICIAN>: Have you heard about an electrician working here?
+A: No, sorry.
+
+Q<KITCHEN>: What can you tell me about the kitchens? 
+A: Some detainees work there to pass the time. [AddTopic(WORK) DeleteTopic(KITCHEN) ServerCommand(efw_TriggerMailPickupMessage) AddDiary(4)]
+
+Q<WORK>: How do I get work in the kitchens?
+A: I'm not sure. Try asking someone else.
+
+Q<OFFICE>: I'm supposed to report to the office.
+A: Then you should go to the main compound. [AddTopic(MAINCOMPOUND)]
+
+Q<HIDING>: Do you know anywhere I could hide?
+A: There are rumours. Try asking around.
+
+Q<IDTAG>: Would you remove my ID tag while I’m in the main compound?
+A: Sorry, I can’t risk being caught by the guards.
+
+Q<GOODBYE>: Goodbye
+A:[Goodbye]
+
+UNWANTED_ITEM
+A<FirstTime>: Thanks my friend, but I don't want that.
+A<!FirstTime>: Keep it, my friend.
+

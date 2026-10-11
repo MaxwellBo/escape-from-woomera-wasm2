@@ -1,0 +1,31 @@
+
+Q<GREET>: Gholan, you are looking very thin.
+A: What is the point in eating? Violence is against the nature of our people, but we have witnessed so much horror, only to be treated like this? I do not want to sew my lips shut, but it seems the only way to attract attention. 
+#Q: Has something bad happened to you?
+ A: I am just tired of being treated this way. Tired of being herded like an animal. Do you know what the guards called us as we lined up for medical attention yesterday? Donkeys?
+#Q: I know what you mean. I am finding it harder and harder to cope.
+ A: Do you know how long I've been locked in this cage? 13 months! Why am I here? Why are all these women and children here? What have we done? Where should we seek justice? Aren't we human beings? I don't even know what my crime is supposed to be!
+
+
+Q<ESCAPE>: I must escape from here.
+A: Locked in here with no end in sight, I believe death will be my only escape. There is nothing to live for any more.
+
+Q<PLIERS>: I need to find a pair of pliers.
+A: I wish you luck in finding some.
+
+Q<WORK>: I was thinking of getting work in the kitchens...
+A: Since I attempted suicide, they say I'm not allowed in there.
+
+Q<OFFICE>: I heard my number called over the speakers.
+A: Then go to the office in the main compound and see what they want.
+
+Q<IDTAG>: Would you remove my ID tag while I’m in the main compound?
+A: I'll do it, if you’ll do me a little favour. I have managed to get a mobile phone, but I need a SIM card to make it work. [AddDiary(12) AddTopic(GotHintAboutHiding)] 
+
+Q<GOODBYE>: Goodbye
+A:[Goodbye]
+
+UNWANTED_ITEM
+A<FirstTime>: Keep it, you may need it later.
+A<!FirstTime>: Keep it yourself.
+

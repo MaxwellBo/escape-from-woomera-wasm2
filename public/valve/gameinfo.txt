@@ -1,0 +1,5 @@
+title		"valve"
+startmap		"c0a0"
+type		"Single"
+gamemode		"singleplayer_only"
+internal_vgui_support	"1"

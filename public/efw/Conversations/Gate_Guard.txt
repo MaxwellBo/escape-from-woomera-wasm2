@@ -1,0 +1,20 @@
+
+Q<GREET>: Hello.
+A: Unless you want to pass this checkpoint, move away from the area.
+
+Q<WORK>: I'd like to work in the kitchens.
+A: So what.
+
+Q<MAINCOMPOUND>: Tell me about the main compound.
+A: If you want to go in, you have to leave your ID tag here on the board so we know you’re in there. When you return, you have to collect it again.
+
+Q<OFFICE>: I have to go to the office.
+A: That's nothing to do with me.
+
+Q<GOODBYE>: Goodbye
+A:[Goodbye]
+
+UNWANTED_ITEM
+A<FirstTime>: You can't bribe me.
+A<!FirstTime>: I don't want anything from you.
+

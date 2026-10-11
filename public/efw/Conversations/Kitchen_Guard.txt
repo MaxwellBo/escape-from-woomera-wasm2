@@ -1,0 +1,20 @@
+
+Q<GREET>: Hello.
+A: Unless you're on kitchen duty, get out of here.
+
+Q<KITCHEN>: Is this the kitchen? 
+A: What does it look like? You want to work here? [AddTopic(WORK) DeleteTopic(KITCHEN) ServerCommand(efw_TriggerMailPickupMessage) AddDiary(4)]
+
+Q<WORK>: I'd like to work in the kitchens.
+A: Go see the roster officer. I can't help you. [AddDiary(9)]
+
+Q<OFFICE>: I'm supposed to report to the office.
+A: Then why are you standing here, you dumb bastard?
+
+Q<GOODBYE>: Goodbye
+A:[Goodbye]
+
+UNWANTED_ITEM
+A<FirstTime>: I don't want anything from you.
+A<!FirstTime>: Why would I want that?
+

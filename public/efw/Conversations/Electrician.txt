@@ -1,0 +1,10 @@
+
+Q<GREET>: Hello.
+A: G'day.
+A: I just work here.
+A: Must be rough for you fellas, being in here.
+
+Q<GOODBYE>: Goodbye
+A:[Goodbye]
+
+

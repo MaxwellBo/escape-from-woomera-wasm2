@@ -1,0 +1,38 @@
+
+Q<GREET>: How are you, Fashid?
+A: How am I? I'm tired of being insulted every day. "Muslim motherfucker," the guards call us. "All Muslims are terrorists," they say. What do they know about it? Nothing!
+
+Q<ESCAPE>: I must escape from here.
+A: If you do, take me with you. I just want to get out of here. Sometimes I can hear the protestors outside singing and calling, and it reminds me that not everyone in this country are terrible.
+
+Q<PLIERS>: I’m looking for a pair of pliers.
+A: Really? The electrician in here was using some earlier. [AddTopic(ELECTRICIAN)]
+
+Q<PLIERS_GOT_PLIERS>: I've got these pliers...
+A: The guard often searches us when we leave. You'll have to smuggle them out of here.
+
+Q<ELECTRICIAN>: Tell me about the electrician working here.
+A: He’s in the next room.
+
+Q<KITCHEN>: Have you worked here very long? 
+A: As much as I can. It helps to pass the time.
+
+Q<OFFICE>: I have to go to the office, but I'm a bit nervous...
+A: I'm not suprised. Going there is rarely good news.
+
+Q<HIDING>: Do you know anywhere I could hide?
+A: Hide? In here? Impossible!
+
+Q<IDTAG>: Would you remove my ID tag while I’m in the main compound?
+A: I live in Oscar compound, so I can't help you.
+
+Q<BINS>: Can you tell me about the bins?
+A: Before they started locking the bins up, we used to smuggle extra food out in them. There's no point now, unless you can somehow break the outside cage lock.[AddDiary(10)] 
+
+Q<GOODBYE>: Goodbye
+A:[Goodbye]
+
+UNWANTED_ITEM
+A<FirstTime>: I have no need of that.
+A<!FirstTime>: I don't want that.
+
