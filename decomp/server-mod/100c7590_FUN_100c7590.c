@@ -1,0 +1,11 @@
+
+void __fastcall FUN_100c7590(undefined4 *param_1)
+
+{
+  *param_1 = 0;
+  *(undefined1 *)(param_1 + 1) = 0;
+  param_1[2] = 100;
+  param_1[3] = 10;
+  return;
+}
+

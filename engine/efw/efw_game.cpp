@@ -2,6 +2,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <ctype.h>
+#include <math.h>
 
 #include "extdll.h"
 #include "util.h"
@@ -17,7 +18,8 @@
 // frame FUN_100c6a70 writes min(max(gpGlobals->time - last, 0), 0.2) into
 // DAT_10134874, and FUN_100c6ad0 does clamp(hope - step * (1/12), 0, 100).
 // Menu bytes 0x3f and 0x43 add 15. Stashing the pliers adds 10. The electrician
-// catching that stash subtracts 2.
+// catching that stash subtracts 2. efw_GetPackage adds 10 and gives the phone
+// and the washing powder.
 
 static const float HOPE_MAX = 100.0f;
 static const float HOPE_START = 80.0f;
@@ -25,8 +27,16 @@ static const float HOPE_DECAY = 1.0f / 12.0f;
 static const float HOPE_MAX_STEP = 0.2f;
 static const float HOPE_BONUS = 15.0f;
 static const float HOPE_BIN_BONUS = 10.0f;
+static const float HOPE_PACKAGE = 10.0f;
+static const float HOPE_GHOLAN = 10.0f;
 static const float HOPE_CAUGHT = 2.0f;
 static const float TALK_RADIUS = 123.0f;
+// FUN_100c59c0: distance under 256, or the electrician's facing cone under 35 degrees.
+static const float ELEC_SEE_DIST = 256.0f;
+static const float ELEC_SEE_ANGLE = 0.61086476f;
+// FUN_100c5c50: patrol guards see out to 512 units inside a 60 degree cone.
+static const float GUARD_SEE_DIST = 512.0f;
+static const float GUARD_SEE_ANGLE = 1.0471976f;
 
 static const char *SCRIPT_FILES[] = {
 	"Amir", "Detainee", "Electrician", "Elika", "Fashid", "Gate_Guard", "Gholan",
@@ -74,6 +84,7 @@ static int g_loaded = 0;
 static int g_gaveTag = 0;
 static int g_tagOnBoard = 0;
 static int g_pliersInBin = 0;
+static int g_binFails = 0;
 static int g_ending = 0;
 static int g_msgsReady = 0;
 static int gmsgEfw = 0;
@@ -339,6 +350,35 @@ static void add_hope(float amount)
 	clamp_hope();
 }
 
+static void add_diary(CBasePlayer *player, int id)
+{
+	for (int i = 0; i < g_ndiary; i++) if (g_diary[i] == id) return;
+	if (g_ndiary < MAX_DIARY) g_diary[g_ndiary++] = id;
+	if (player) ClientPrint(player->pev, HUD_PRINTTALK, UTIL_VarArgs("Diary entry %d.\n", id));
+}
+
+static float angle_between(const Vector &dir, const Vector &forward)
+{
+	float dot = DotProduct(dir, forward);
+	if (dot > 1.0f) dot = 1.0f;
+	if (dot < -1.0f) dot = -1.0f;
+	return acosf(dot);
+}
+
+// FUN_100c59c0. MakeVectors uses the electrician's angles (pev + 0x50).
+static int electrician_sees(CBasePlayer *player)
+{
+	CBaseEntity *elec = UTIL_FindEntityByTargetname(NULL, "efw_electrician");
+	if (!elec || !player) return 0;
+	Vector delta = player->pev->origin - elec->pev->origin;
+	float dist = delta.Length();
+	if (dist < ELEC_SEE_DIST) return 1;
+	if (dist < 0.001f) return 1;
+	UTIL_MakeVectors(elec->pev->angles);
+	if (angle_between(delta * (1.0f / dist), gpGlobals->v_forward) < ELEC_SEE_ANGLE) return 1;
+	return 0;
+}
+
 static int map_level()
 {
 	const char *name = STRING(gpGlobals->mapname);
@@ -398,17 +438,18 @@ static void apply_commands(CBasePlayer *player, const char *commands)
 		if (!strcmp(name, "AddTopic")) set_topic(arg, 1);
 		else if (!strcmp(name, "DeleteTopic")) set_topic(arg, 0);
 		else if (!strcmp(name, "AddDiary")) {
-			int id = atoi(arg);
-			int have = 0;
-			for (int i = 0; i < g_ndiary; i++) if (g_diary[i] == id) have = 1;
-			if (!have && g_ndiary < MAX_DIARY) g_diary[g_ndiary++] = id;
-			if (player) ClientPrint(player->pev, HUD_PRINTTALK, UTIL_VarArgs("Diary entry %d.\n", id));
+			add_diary(player, atoi(arg));
 		} else if (!strcmp(name, "Goodbye")) {
 			g_talking = 0;
 		} else if (!strcmp(name, "ServerCommand")) {
-			if (!strcmp(arg, "efw_GetPackage")) {
-				add_hope(HOPE_BONUS);
-				if (player) ClientPrint(player->pev, HUD_PRINTCENTER, "A package. A little hope returns.");
+			// FUN_100bfbf0. The package is the powder and the phone, then +10.
+			if (!strcmp(arg, "efw_GetPackage") && player) {
+				if (!has_weapon(player, "weapon_efw_WashingPowder"))
+					player->GiveNamedItem("weapon_efw_WashingPowder");
+				if (!has_weapon(player, "weapon_efw_MobilePhone"))
+					player->GiveNamedItem("weapon_efw_MobilePhone");
+				add_hope(HOPE_PACKAGE);
+				ClientPrint(player->pev, HUD_PRINTCENTER, "A package. Washing powder, a phone, and a little hope.");
 			}
 		}
 	}
@@ -431,13 +472,49 @@ static void set_doors(const char *name, int solid)
 	}
 }
 
+static void open_named(CBasePlayer *player, const char *name)
+{
+	FireTargets(name, player, player, USE_ON, 0);
+	set_doors(name, SOLID_NOT);
+}
+
 static void refresh_doors()
 {
-	int gate = g_tagOnBoard ? SOLID_NOT : SOLID_BSP;
-	set_doors("efw_compound_gate", gate);
-	set_doors("efw_1stcompound_gate", gate);
-	set_doors("efw_actual_kitchen_door", topic_on("OnKitchenRoster") ? SOLID_NOT : SOLID_BSP);
-	if (g_level == 2) set_doors("efw_cage_door", SOLID_NOT);
+}
+
+static const char *trigger_label(CBaseEntity *ent)
+{
+	const char *target = STRING(ent->pev->target);
+	if (target && target[0]) return target;
+	return STRING(ent->pev->targetname);
+}
+
+static void say_gap(CBasePlayer *player, const char *text)
+{
+	static float next = 0;
+	static char last[180];
+	if (!player || !text) return;
+	if (gpGlobals->time < next && !strcmp(last, text)) return;
+	copy_cap(last, sizeof(last), text);
+	next = gpGlobals->time + 3.0f;
+	ClientPrint(player->pev, HUD_PRINTCENTER, text);
+}
+
+// DLL item table at 0x100f81e0. These are not the port's weapon slot numbers.
+static const char *class_from_dll_item(int id)
+{
+	switch (id) {
+	case 0x10: return "weapon_efw_Pliers";
+	case 0x11: return "weapon_efw_Lever";
+	case 0x12: return "weapon_efw_Branch";
+	case 0x13: return "weapon_efw_MobilePhone";
+	case 0x14: return "weapon_efw_IDTag";
+	case 0x15: return "weapon_efw_RedPhoneCard";
+	case 0x16: return "weapon_efw_GreenPhoneCard";
+	case 0x17: return "weapon_efw_BluePhoneCard";
+	case 0x18: return "weapon_efw_WashingPowder";
+	default: return NULL;
+	}
 }
 
 // Xash user messages stop at 2048 bytes. The browser HUD keeps a short
@@ -472,7 +549,9 @@ static void send_panel(CBasePlayer *player)
 		EfwScript *script = find_script(g_scriptName);
 		for (int i = 0; i < g_nchoices; i++) {
 			const char *q = "Give him the pliers.";
-			if (g_choiceEntry[i] >= 0 && script)
+			if (g_choiceEntry[i] == -2) q = "Give him the mobile phone.";
+			else if (g_choiceEntry[i] == -3) q = "Give him the washing powder.";
+			else if (g_choiceEntry[i] >= 0 && script)
 				q = script->entries[g_choiceEntry[i]].question;
 			write_short(UTIL_VarArgs("%d. %s", i + 1, q));
 		}
@@ -508,6 +587,13 @@ static void open_topics(CBasePlayer *player, const char *targetname)
 	}
 	if (has_weapon(player, "weapon_efw_Pliers") && !strcmp(targetname, "Amir") && g_nchoices < 12) {
 		g_choiceEntry[g_nchoices++] = -1;
+	}
+	if (has_weapon(player, "weapon_efw_MobilePhone") && !strcmp(targetname, "Gholan")
+		&& topic_on("GotHintAboutHiding") && g_nchoices < 12) {
+		g_choiceEntry[g_nchoices++] = -2;
+	}
+	if (has_weapon(player, "weapon_efw_WashingPowder") && !strcmp(targetname, "Mouhtaz") && g_nchoices < 12) {
+		g_choiceEntry[g_nchoices++] = -3;
 	}
 	g_talking = 1;
 	g_mode = 0;
@@ -557,9 +643,32 @@ static void show_answer(CBasePlayer *player, EfwEntry *entry)
 static void pick_choice(CBasePlayer *player, int index)
 {
 	if (!g_talking || g_mode != 0 || index < 0 || index >= g_nchoices) return;
-	if (g_choiceEntry[index] < 0) {
+	if (g_choiceEntry[index] == -1) {
 		take_weapon(player, "weapon_efw_Pliers");
-		set_ending(player, 3, "Amir takes the pliers. The fence is next.");
+		set_ending(player, 3, "Well done! Your bravery and cleverness have helped bring us all one step closer to freedom!");
+		return;
+	}
+	if (g_choiceEntry[index] == -2) {
+		take_weapon(player, "weapon_efw_MobilePhone");
+		set_topic("GholanAgreedToPloy", 1);
+		set_topic("IDTAG", 0);
+		set_topic("HIDING", 0);
+		add_hope(HOPE_GHOLAN);
+		add_diary(player, 13);
+		g_talking = 0;
+		ClientPrint(player->pev, HUD_PRINTCENTER, "Well done, my friend. When you next go to the main compound, rest assured I'll remove the tag. You'll be free to hide then.");
+		send_panel(player);
+		return;
+	}
+	if (g_choiceEntry[index] == -3) {
+		take_weapon(player, "weapon_efw_WashingPowder");
+		if (!has_weapon(player, "weapon_efw_Lever"))
+			player->GiveNamedItem("weapon_efw_Lever");
+		add_hope(HOPE_BONUS);
+		add_diary(player, 17);
+		g_talking = 0;
+		ClientPrint(player->pev, HUD_PRINTCENTER, "Mustafa, this is far too kind of you! The only thing I can offer you in exchange is this length of metal pipe I have found and have been hiding. Perhaps you can find a use for it?");
+		send_panel(player);
 		return;
 	}
 	EfwScript *script = find_script(g_scriptName);
@@ -597,6 +706,101 @@ static CBaseEntity *nearest_named(CBasePlayer *player, const char *classname, fl
 	return found;
 }
 
+static int try_pickup_pliers(CBasePlayer *player)
+{
+	// efw_PickupPliers. The sight test refuses the take. Hope is not changed here.
+	if (electrician_sees(player)) {
+		ClientPrint(player->pev, HUD_PRINTCENTER, "Oi! Put that back!");
+		return 1;
+	}
+	if (!has_weapon(player, "weapon_efw_Pliers"))
+		player->GiveNamedItem("weapon_efw_Pliers");
+	set_topic("PLIERS_GOT_PLIERS", 1);
+	ClientPrint(player->pev, HUD_PRINTCENTER, "You take the pliers.");
+	return 1;
+}
+
+static int try_stash_bin(CBasePlayer *player)
+{
+	// FUN_100c4f90, the efw_kitchen_bin handler.
+	if (!has_weapon(player, "weapon_efw_Pliers")) {
+		ClientPrint(player->pev, HUD_PRINTCENTER, "Nothing of yours is hidden in the bin.");
+		return 1;
+	}
+	if (electrician_sees(player)) {
+		g_binFails++;
+		ALERT(at_console, "Dammit! Electrician saw you, can't put pliers in bin. Fail count: %d.\n", g_binFails);
+		ClientPrint(player->pev, HUD_PRINTCENTER, "Oi! Put that back!");
+		add_hope(-HOPE_CAUGHT);
+		return 1;
+	}
+	take_weapon(player, "weapon_efw_Pliers");
+	g_pliersInBin = 1;
+	set_topic("PliersInBin", 1);
+	set_topic("PLIERS_GOT_PLIERS", 0);
+	set_topic("OFFICE", 1);
+	add_hope(HOPE_BIN_BONUS);
+	add_diary(player, 6);
+	ClientPrint(player->pev, HUD_PRINTCENTER, "You stash the pliers in the bin.");
+	return 1;
+}
+
+static int try_hide(CBasePlayer *player)
+{
+	// efw_HideUnderBuilding. Chapter 0 is level 1, chapter 1 is level 2.
+	// Success sends menu 0x3f or 0x43, and both of those add 15 hope.
+	if (g_level == 1) {
+		if (!topic_on("PliersInBin")) {
+			ClientPrint(player->pev, HUD_PRINTCENTER, "The pliers are not hidden in the bin.");
+			return 1;
+		}
+		if (!topic_on("GholanAgreedToPloy")) {
+			ClientPrint(player->pev, HUD_PRINTCENTER, "Gholan has not agreed to move your ID tag.");
+			return 1;
+		}
+		if (!has_weapon(player, "weapon_efw_Lever")) {
+			ClientPrint(player->pev, HUD_PRINTCENTER, "You need the metal lever.");
+			return 1;
+		}
+		add_hope(HOPE_BONUS);
+		ClientPrint(player->pev, HUD_PRINTCENTER, "You hide. Night falls.");
+		change_map("efw_prototype_level2");
+		return 1;
+	}
+	if (g_level == 2) {
+		if (!has_weapon(player, "weapon_efw_Pliers")) {
+			ClientPrint(player->pev, HUD_PRINTCENTER, "You need the pliers.");
+			return 1;
+		}
+		add_hope(HOPE_BONUS);
+		ClientPrint(player->pev, HUD_PRINTCENTER, "Dawn. You slip back into the camp.");
+		change_map("efw_prototype_level3");
+		return 1;
+	}
+	return 0;
+}
+
+static int try_cage(CBasePlayer *player)
+{
+	CBaseEntity *door = UTIL_FindEntityByTargetname(NULL, "efw_cage_door");
+	if (!door) return 0;
+	if ((door->pev->origin - player->pev->origin).Length() > TALK_RADIUS) return 0;
+	if (has_weapon(player, "weapon_efw_Lever")) {
+		take_weapon(player, "weapon_efw_Lever");
+		open_named(player, "efw_cage_door");
+		ClientPrint(player->pev, HUD_PRINTCENTER, "Good work; you've openned the cage door, by using the metal lever.");
+		return 1;
+	}
+	if (has_weapon(player, "weapon_efw_Branch")) {
+		take_weapon(player, "weapon_efw_Branch");
+		if (!has_weapon(player, "weapon_efw_Lever"))
+			player->GiveNamedItem("weapon_efw_Lever");
+		ClientPrint(player->pev, HUD_PRINTCENTER, "Oh, you've broken the branch attempting to open the cage door! The door stays locked! Try something else.");
+		return 1;
+	}
+	return 0;
+}
+
 static int try_marker(CBasePlayer *player)
 {
 	CBaseEntity *ent = NULL;
@@ -604,62 +808,30 @@ static int try_marker(CBasePlayer *player)
 		if (!point_in_entity(player->pev->origin, ent, 24)) continue;
 		const char *name = STRING(ent->pev->targetname);
 		if (!strcmp(name, "efw_IDTag_Position")) {
-			if (!has_weapon(player, "weapon_efw_IDTag")) {
-				ClientPrint(player->pev, HUD_PRINTCENTER, "You have no ID tag to leave here.");
+			if (has_weapon(player, "weapon_efw_IDTag")) {
+				take_weapon(player, "weapon_efw_IDTag");
+				g_tagOnBoard = 1;
+				set_topic("Player'sIDTagOnFence", 1);
+				ClientPrint(player->pev, HUD_PRINTCENTER, "You leave the ID tag on the board.");
 				return 1;
 			}
-			take_weapon(player, "weapon_efw_IDTag");
-			g_tagOnBoard = 1;
-			refresh_doors();
-			ClientPrint(player->pev, HUD_PRINTCENTER, "You leave the ID tag on the board.");
+			if (g_tagOnBoard) {
+				player->GiveNamedItem("weapon_efw_IDTag");
+				g_tagOnBoard = 0;
+				set_topic("Player'sIDTagOnFence", 0);
+				ClientPrint(player->pev, HUD_PRINTCENTER, "You take your ID tag back.");
+				return 1;
+			}
+			ClientPrint(player->pev, HUD_PRINTCENTER, "You have no ID tag to leave here.");
 			return 1;
 		}
-		if (!strcmp(name, "efw_PliersMarker")) {
-			if (!topic_on("ELECTRICIAN")) {
-				ClientPrint(player->pev, HUD_PRINTCENTER, "Tools. You don't know whose they are yet.");
-				return 1;
-			}
-			CBaseEntity *electrician = UTIL_FindEntityByTargetname(NULL, "efw_electrician");
-			if (electrician && (electrician->pev->origin - player->pev->origin).Length() < 160) {
-				add_hope(-HOPE_CAUGHT);
-				ClientPrint(player->pev, HUD_PRINTCENTER, "Oi! Put that back!");
-				return 1;
-			}
-			if (!has_weapon(player, "weapon_efw_Pliers"))
-				player->GiveNamedItem("weapon_efw_Pliers");
-			set_topic("PLIERS_GOT_PLIERS", 1);
-			ClientPrint(player->pev, HUD_PRINTCENTER, "You take the pliers.");
-			return 1;
-		}
-		if (!strcmp(name, "efw_kitchen_bin")) {
-			if (!has_weapon(player, "weapon_efw_Pliers")) {
-				ClientPrint(player->pev, HUD_PRINTCENTER, "Nothing of yours is hidden in the bin.");
-				return 1;
-			}
-			take_weapon(player, "weapon_efw_Pliers");
-			g_pliersInBin = 1;
-			set_topic("PliersInBin", 1);
-			set_topic("PLIERS_GOT_PLIERS", 0);
-			add_hope(HOPE_BIN_BONUS);
-			ClientPrint(player->pev, HUD_PRINTCENTER, "You stash the pliers in the bin.");
-			return 1;
-		}
+		if (!strcmp(name, "efw_PliersMarker"))
+			return try_pickup_pliers(player);
+		if (!strcmp(name, "efw_kitchen_bin"))
+			return try_stash_bin(player);
 		if (!strcmp(name, "efw_hiding_place")) {
-			if (g_level == 1) {
-				if (has_weapon(player, "weapon_efw_IDTag") || !g_tagOnBoard) {
-					ClientPrint(player->pev, HUD_PRINTCENTER, "Your ID tag would give you away. Leave it on the board.");
-					return 1;
-				}
-				if (has_weapon(player, "weapon_efw_Pliers")) {
-					ClientPrint(player->pev, HUD_PRINTCENTER, "Hide the pliers before you disappear.");
-					return 1;
-				}
-				ClientPrint(player->pev, HUD_PRINTCENTER, "You hide. Night falls.");
-				change_map("efw_prototype_level2");
-				return 1;
-			}
-			ClientPrint(player->pev, HUD_PRINTCENTER, "Dawn. You slip back into the camp.");
-			change_map("efw_prototype_level3");
+			if (try_hide(player)) return 1;
+			ClientPrint(player->pev, HUD_PRINTCENTER, "This is no place to hide.");
 			return 1;
 		}
 	}
@@ -668,28 +840,56 @@ static int try_marker(CBasePlayer *player)
 
 static int blocked_trigger(CBasePlayer *player)
 {
+	// FUN_100c7da0. The map stores these names on trigger_multiple.target.
 	CBaseEntity *ent = NULL;
 	int blocked = 0;
 	while ((ent = UTIL_FindEntityByClassname(ent, "trigger_multiple")) != NULL) {
 		if (!point_in_entity(player->pev->origin, ent, 0)) continue;
-		const char *name = STRING(ent->pev->targetname);
+		const char *name = trigger_label(ent);
 		if (!strcmp(name, "efw_kitchen_door")) {
-			if (!topic_on("OnKitchenRoster")) {
-				ClientPrint(player->pev, HUD_PRINTCENTER, "Where do you think you're going? You can't enter without a kitchen pass.");
+			if (has_weapon(player, "weapon_efw_Pliers")) {
+				say_gap(player, "You can't enter the kitchen while you are carrying the pliers.");
+				blocked = 1;
+			} else if (!topic_on("OnKitchenRoster")) {
+				say_gap(player, "Where do you think you're going? You can't enter without a kitchen pass.");
+				blocked = 1;
+			} else if (g_level == 1) {
+				if (!topic_on("HasEnteredTheKitchenForTheFirstTime")) {
+					set_topic("HasEnteredTheKitchenForTheFirstTime", 1);
+					say_gap(player, "RAR-124? Go in, you're on the roster.");
+				}
+				open_named(player, "efw_actual_kitchen_door");
+			} else if (g_level == 3) {
+				if (!topic_on("HasEnteredTheKitchenInChapterTwo")) {
+					set_topic("HasEnteredTheKitchenInChapterTwo", 1);
+					say_gap(player, "Back again? OK, go on in.");
+				}
+				open_named(player, "efw_actual_kitchen_door");
+			}
+		} else if (!strcmp(name, "efw_2ndcompound_entry")) {
+			if (topic_on("Player'sIDTagOnFence")) {
+				open_named(player, "efw_compound_gate");
+			} else if (!topic_on("HeardCompoundGateGuardOnce")) {
+				set_topic("HeardCompoundGateGuardOnce", 1);
+				say_gap(player, "Hold it! To enter the main compound, leave your ID tag on the board so we know you're there. And don't forget to collect it again when your return.");
+				blocked = 1;
+			} else {
+				say_gap(player, "No tag on the board, no entry. Leave your ID Tag on the board to enter.");
 				blocked = 1;
 			}
-		} else if (!strcmp(name, "efw_compound_gate") || !strcmp(name, "efw_1stcompound_gate")
-			|| !strcmp(name, "efw_1stcompound_entry") || !strcmp(name, "efw_2ndcompound_entry")) {
-			if (!g_tagOnBoard) {
-				ClientPrint(player->pev, HUD_PRINTCENTER, "The guard stops you. Leave your ID tag on the board first.");
+		} else if (!strcmp(name, "efw_1stcompound_entry")) {
+			if (!topic_on("Player'sIDTagOnFence")) {
+				open_named(player, "efw_1stcompound_gate");
+			} else {
+				say_gap(player, "The gate doesn't open til you collect your tag. No tag, no entry.");
 				blocked = 1;
 			}
-		} else if (!strcmp(name, "efw_approach_bin") && g_level == 2) {
-			if (g_pliersInBin) {
-				g_pliersInBin = 0;
-				if (!has_weapon(player, "weapon_efw_Pliers"))
-					player->GiveNamedItem("weapon_efw_Pliers");
-				ClientPrint(player->pev, HUD_PRINTCENTER, "The pliers are still in the bin. You take them.");
+		} else if (!strcmp(name, "efw_approach_bin")) {
+			if (!has_weapon(player, "weapon_efw_Pliers") && !topic_on("PLIERS_GOT_PLIERS")) {
+				player->GiveNamedItem("weapon_efw_Pliers");
+				set_topic("PLIERS_GOT_PLIERS", 1);
+				add_hope(HOPE_BONUS);
+				ClientPrint(player->pev, HUD_PRINTCENTER, "You take the pliers.");
 			}
 		}
 	}
@@ -708,13 +908,29 @@ int Efw_PlayerIsHiding()
 	return point_in_entity(player->pev->origin, ent, 16);
 }
 
+static int guard_sees(CBaseMonster *guard, CBasePlayer *player)
+{
+	Vector delta = player->pev->origin - guard->pev->origin;
+	float dist = delta.Length();
+	if (dist > GUARD_SEE_DIST) return 0;
+	UTIL_MakeVectors(guard->pev->angles);
+	Vector dir = dist > 0.001f ? delta * (1.0f / dist) : Vector(0, 0, 1);
+	if (angle_between(dir, gpGlobals->v_forward) >= GUARD_SEE_ANGLE) return 0;
+	TraceResult tr;
+	UTIL_TraceLine(guard->pev->origin, player->pev->origin, ignore_monsters, guard->edict(), &tr);
+	if (tr.flFraction >= 1.0f) return 1;
+	Vector up(0, 0, 40);
+	UTIL_TraceLine(guard->pev->origin + up, player->pev->origin + up, ignore_monsters, guard->edict(), &tr);
+	return tr.flFraction >= 1.0f;
+}
+
 void Efw_GuardSpot(CBaseMonster *guard)
 {
 	if (g_ending || g_level != 2 || !guard) return;
 	CBasePlayer *player = live_player();
 	if (!player) return;
 	if (Efw_PlayerIsHiding()) return;
-	if ((player->pev->origin - guard->pev->origin).Length() < 180)
+	if (guard_sees(guard, player))
 		set_ending(player, 2, "A guard catches you. Isolation.");
 }
 
@@ -729,6 +945,7 @@ int Efw_TryUse(CBasePlayer *player)
 		return 1;
 	}
 	if (try_marker(player)) return 1;
+	if (try_cage(player)) return 1;
 	CBaseEntity *npc = nearest_named(player, "monster_refugee", TALK_RADIUS);
 	if (!npc) npc = nearest_named(player, "monster_barney", TALK_RADIUS);
 	if (!npc) return 0;
@@ -739,6 +956,80 @@ int Efw_TryUse(CBasePlayer *player)
 	if (DotProduct(los, gpGlobals->v_forward) < 0.15f) return 0;
 	Efw_BeginTalk(player, STRING(npc->pev->targetname));
 	return 1;
+}
+
+static const char *command_item(int index)
+{
+	const char *arg = CMD_ARGV(index);
+	if (!strncmp(arg, "weapon_", 7)) return arg;
+	return class_from_dll_item(atoi(arg));
+}
+
+static void give_item(CBasePlayer *player, const char *cls, const char *who)
+{
+	if (!player || !cls || !who || !has_weapon(player, cls)) {
+		if (player) ClientPrint(player->pev, HUD_PRINTCENTER, "You don't have that.");
+		return;
+	}
+	if (!strcmp(cls, "weapon_efw_MobilePhone") && !strcmp(who, "Gholan") && topic_on("GotHintAboutHiding")) {
+		take_weapon(player, cls);
+		set_topic("GholanAgreedToPloy", 1);
+		set_topic("IDTAG", 0);
+		set_topic("HIDING", 0);
+		add_hope(HOPE_GHOLAN);
+		add_diary(player, 13);
+		ClientPrint(player->pev, HUD_PRINTCENTER, "Well done, my friend. When you next go to the main compound, rest assured I'll remove the tag. You'll be free to hide then.");
+		return;
+	}
+	if (!strcmp(cls, "weapon_efw_WashingPowder") && !strcmp(who, "Mouhtaz")) {
+		take_weapon(player, cls);
+		if (!has_weapon(player, "weapon_efw_Lever"))
+			player->GiveNamedItem("weapon_efw_Lever");
+		add_hope(HOPE_BONUS);
+		add_diary(player, 17);
+		ClientPrint(player->pev, HUD_PRINTCENTER, "Mustafa, this is far too kind of you! The only thing I can offer you in exchange is this length of metal pipe I have found and have been hiding. Perhaps you can find a use for it?");
+		return;
+	}
+	if (!strcmp(cls, "weapon_efw_Pliers")) {
+		if (!strcmp(who, "Amir")) {
+			take_weapon(player, cls);
+			set_ending(player, 3, "Well done! Your bravery and cleverness have helped bring us all one step closer to freedom!");
+			return;
+		}
+		if (!strcmp(who, "Fashid")) {
+			ClientPrint(player->pev, HUD_PRINTCENTER, "Thanks, but I don't want them. A word of warning though, my friend. The guard outside often searches us, so you should find a way to hide them or smuggle them out.");
+			return;
+		}
+		if (!strcmp(who, "Nasir")) {
+			ClientPrint(player->pev, HUD_PRINTCENTER, "Well done, but you'll have to hide them in here somewhere, or the guard will find them when you leave the kitchen.");
+			return;
+		}
+		if (!strcmp(who, "Mouhtaz")) {
+			ClientPrint(player->pev, HUD_PRINTCENTER, "Are you crazy? Whatever you do, don't try to leave with them. The guard outside may search you!");
+			return;
+		}
+	}
+	Efw_BeginTalk(player, who);
+}
+
+static void use_with_marker(CBasePlayer *player, const char *cls, const char *marker)
+{
+	if (!player || !cls || !marker || !has_weapon(player, cls)) return;
+	if (!strcmp(marker, "efw_cage_door") && !strcmp(cls, "weapon_efw_Lever")) {
+		take_weapon(player, cls);
+		open_named(player, "efw_cage_door");
+		ClientPrint(player->pev, HUD_PRINTCENTER, "Good work; you've openned the cage door, by using the metal lever.");
+		return;
+	}
+	if (!strcmp(marker, "efw_cage_door") && !strcmp(cls, "weapon_efw_Branch")) {
+		take_weapon(player, cls);
+		if (!has_weapon(player, "weapon_efw_Lever"))
+			player->GiveNamedItem("weapon_efw_Lever");
+		ClientPrint(player->pev, HUD_PRINTCENTER, "Oh, you've broken the branch attempting to open the cage door! The door stays locked! Try something else.");
+		return;
+	}
+	if (!strcmp(marker, "efw_kitchen_bin") && !strcmp(cls, "weapon_efw_Pliers"))
+		try_stash_bin(player);
 }
 
 int Efw_ClientCommand(edict_t *pent)
@@ -753,6 +1044,21 @@ int Efw_ClientCommand(edict_t *pent)
 		advance_page(player);
 	else if (!strcmp(cmd, "efw_Talk") && CMD_ARGC() > 1)
 		Efw_BeginTalk(player, CMD_ARGV(1));
+	else if (!strcmp(cmd, "efw_Give") && CMD_ARGC() > 2)
+		give_item(player, command_item(1), CMD_ARGV(2));
+	else if (!strcmp(cmd, "efw_UseWithMarker") && CMD_ARGC() > 2)
+		use_with_marker(player, command_item(1), CMD_ARGV(2));
+	else if (!strcmp(cmd, "efw_PickupPliers"))
+		try_pickup_pliers(player);
+	else if (!strcmp(cmd, "efw_HideUnderBuilding"))
+		try_hide(player);
+	else if (!strcmp(cmd, "efw_changelevel") && CMD_ARGC() > 1)
+		change_map(CMD_ARGV(1));
+	else if (!strcmp(cmd, "efw_diary")) {
+		if (!g_ndiary) ClientPrint(player->pev, HUD_PRINTTALK, "The diary is empty.\n");
+		for (int i = 0; i < g_ndiary; i++)
+			ClientPrint(player->pev, HUD_PRINTTALK, UTIL_VarArgs("Diary %d\n", g_diary[i]));
+	}
 	return 1;
 }
 
@@ -787,9 +1093,11 @@ void Efw_StartFrame()
 		g_haveSafe = 1;
 	}
 
+	// efw_Talk keeps a partner out to 10000000 units. Drop the talk only when
+	// that entity is gone.
 	if (g_talking) {
 		CBaseEntity *partner = UTIL_FindEntityByTargetname(NULL, g_partner);
-		if (!partner || (partner->pev->origin - player->pev->origin).Length() > 220) {
+		if (!partner) {
 			g_talking = 0;
 			send_panel(player);
 		}

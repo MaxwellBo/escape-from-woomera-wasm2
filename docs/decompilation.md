@@ -63,6 +63,9 @@ Other hope changes recovered from call sites of `FUN_100c4d70` and `FUN_100c4d10
 | Mouhtaz hands over the lever | `+15`, gives `weapon_efw_Lever`, diary 17 |
 | Player has both `weapon_efw_WashingPowder` and `weapon_efw_MobilePhone` | `+10`, menu byte `0x47` |
 | `efw_approach_bin` when the player is not carrying pliers | gives `weapon_efw_Pliers`, `+15`, menu byte `0x45` |
+| `efw_GetPackage` | gives `weapon_efw_WashingPowder` and `weapon_efw_MobilePhone`, then `+10` and menu byte `0x47` |
+| `efw_HideUnderBuilding` on level 1, once the pliers are in the bin, Gholan has agreed, and the player has the lever | menu byte `0x3f`, which adds `+15` |
+| same command on level 2 while the player has the pliers | menu byte `0x43`, which adds `+15` |
 
 ## Conversation scripts
 
@@ -121,14 +124,35 @@ Client strings name the commands the HUD sends back: `efw_Talk`, `efw_Give`, `ef
 
 Client storyboard names mark the chapter changes and endings: introduction, hiding by day, hiding by night, decoy, deportation, isolation, and a positive ending. Those screens issue `efw_changelevel` for one of the three maps, or `efw_pause`.
 
+## Sight, gates, and item hand-offs
+
+`FUN_100c59c0` finds `efw_electrician` and returns seen when the player is within 256 units, or when the angle between the electrician’s `angles` and the direction to the player is under `0.61086476` radians (35 degrees). `UTIL_MakeVectors` is called on `pev + 0x50`, which is `angles`. There is no second distance cap on the cone. The kitchen-bin handler (`0x100c4f90`) uses that result: seen means the line `Oi! Put that back!` and hope `-2`; not seen stashes the pliers, enables `PliersInBin` and `OFFICE`, clears `PLIERS_GOT_PLIERS`, adds 10 hope, and records diary 6. `efw_PickupPliers` uses the same sight test and only refuses the take. It does not change hope.
+
+`FUN_100c5c50` is the patrol-guard visibility test. The guard sees the player at 512 units or closer, inside `1.0471976` radians (60 degrees) of the guard’s facing, when a trace from origin to origin is clear. If that trace hits, a second trace 40 units higher can still count as seen. `FUN_100c5e30` is not a radius. It returns true once when a field at monster `+0x2e4` equals 8, then clears the field. Nothing else in the decompiled mod range writes that field.
+
+`FUN_100c7da0` is the trigger touch. The names live on `trigger_multiple.target`:
+
+| Target | Effect |
+| --- | --- |
+| `efw_kitchen_door` | Pliers in hand send menu `0x3c` and stop the entry. Without `OnKitchenRoster` the kitchen guard refuses. On level 1 the first entry is `RAR-124? Go in, you're on the roster.` On level 3 it is `Back again? OK, go on in.` Either success fires `efw_actual_kitchen_door`. |
+| `efw_2ndcompound_entry` | Opens `efw_compound_gate` only while `Player'sIDTagOnFence` is on. Otherwise the gate guard speaks the hold-it line once, then the shorter refusal. |
+| `efw_1stcompound_entry` | Opens `efw_1stcompound_gate` while the tag is not on the board. If it is, the guard says to collect the tag. |
+| `efw_approach_bin` | If the player has no pliers, gives `weapon_efw_Pliers`, menu `0x45`, hope `+15`. |
+
+Giving the mobile phone to Gholan while `GotHintAboutHiding` is on (`0x100c5240`) consumes the phone, speaks the “Well done, my friend…” line, enables `GholanAgreedToPloy`, clears `IDTAG` and `HIDING`, adds 10 hope, and records diary 13. Giving the washing powder to Mouhtaz (`0x100c5330`) consumes the powder, speaks the pipe line, gives `weapon_efw_Lever`, adds 15 hope, and records diary 17. Giving the pliers to Amir, Fashid, Nasir, or Mouhtaz uses the four lines in `FUN_100c4e30`. Only Amir’s line consumes the pliers. The cage-door handlers are item methods: the lever (`0x100c50d0`, item id `0x11`) opens `efw_cage_door` and is consumed; the branch (`0x100c5180`, item id `0x12`) breaks, is consumed, and is replaced with the lever.
+
+`efw_HideUnderBuilding` (`0x1001b969`) branches on the map. Level 1 requires `PliersInBin`, then `GholanAgreedToPloy`, then the lever, and the success byte is `0x3f`. Level 2 requires the pliers, and the success byte is `0x43`. Both of those bytes add 15 hope inside `FUN_100c81d0`. The client menu for `0x3f` is `Storyboard\EFW_Storyboards_Hiding_Day.spr`. The menu for `0x43` is `Storyboard\EFW_Storyboards_Hiding_Night.spr`. Separate menu bytes issue `efw_changelevel` for level 2 (`0x4f`) and level 3 (`0x50`).
+
+`efw_Talk` searches entities named by the argument and keeps the closest one inside `10000000` units (`0x4b189680` stored as a float immediate). The earlier 220-unit cancel is not in this DLL.
+
 ## Unknowns
 
 - The generated flex parser was not decompiled production by production. The line shape above is what the shipped scripts and the loader strings support.
-- Most of `EscapeFromWoomera.dll` is Spirit of Half-Life. Those functions were not re-copied here; the browser links the Spirit 1.2 sources.
-- The client format walker that expands `%C`, `%c`, `%i`, `%d`, and `%u` was not lifted instruction by instruction. The templates and the 48-byte record they read are above.
-- `FUN_100c59c0`, the “electrician saw you” test on the bin, was not reduced to a trace or a radius. The browser still uses a 160-unit distance for that refusal, and applies the recovered `-2` hope.
-- Gholan’s ID-tag bargain (`+10`, diary 13) and Mouhtaz’s lever (`+15`, diary 17) are separate server functions. They are not yet called from the conversation picker.
-- The string `Conversation hidden, partner too far` is not in this DLL’s `.rdata`. The 220-unit drop used by the browser port is still an assumption.
+- Most of `EscapeFromWoomera.dll` is Spirit of Half-Life. Those functions were not re-copied here; the browser links the Spirit 1.2 sources. Ghidra listings for the mod ranges are under `decomp/`.
+- The client format walker (`0x10044f70`) was decompiled. It still is not what the browser HUD runs. The browser keeps the port’s `EFWShow` panel.
+- Ghidra did not create a function at the server command dispatcher (`0x1001a920`). That body was read from the bytes. The commands above are the ones whose branches were lifted.
+- The hearing flag at monster `+0x2e4` has no writer in the decompiled mod range, so the browser guard uses the visibility test only.
+- Menu bytes `0x3c`, `0x40`, `0x41`, `0x42`, and `0x44` show client story panels. The server DLL has no caption for them. The browser prints a line that names the failed check.
 
 ## Browser engine
 
@@ -136,15 +160,15 @@ The playable page runs [Xash3D FWGS](https://github.com/FWGS/xash3d-fwgs) from t
 
 `engine/efw/efw_game.cpp` is a structured port of the recovered grammar and the hope formula. It is not Ghidra’s C compiled as-is. The client reads one `EFWShow` layout written by that port (kind byte, hope byte, line count, strings). That layout is the browser HUD. It is not the slot protocol observed in `client.dll`.
 
-Hope starts at 80, and the decay step is `gpGlobals->frametime` clamped to `[0, 0.2]`. A person named `Detainee` does not get the talk prompt. Other refugees and barneys are eligible inside 123 units. Stashing the pliers adds 10 hope; the electrician catching that attempt subtracts 2.
+Hope starts at 80, and the decay step is `gpGlobals->frametime` clamped to `[0, 0.2]`. A person named `Detainee` does not get the talk prompt. Other refugees and barneys are eligible inside 123 units. Stashing the pliers adds 10 hope when the electrician does not see the player. The electrician sees the player inside 256 units, or inside a 35 degree cone of his facing. That refusal subtracts 2 hope on the bin and only refuses the take on the pliers marker. `efw_GetPackage` gives the washing powder and the phone and adds 10 hope. Diary lines do not add hope.
+
+Giving the phone to Gholan, after `GotHintAboutHiding` is on, runs his bargain: the phone is taken, hope rises by 10, and diary 13 is recorded. Giving the washing powder to Mouhtaz takes the powder, gives the lever, adds 15 hope, and records diary 17. The cage door opens for the lever and breaks the branch. Hiding on level 1 requires the bin stash, Gholan’s agreement, and the lever, then adds 15 hope and loads level 2. Hiding on level 2 requires the pliers, adds 15 hope, and loads level 3. A level 2 guard catches the player inside 512 units and a 60 degree cone when the trace is clear, unless the player is inside `efw_hiding_place`.
 
 These choices are not recovered facts:
 
 - The level-1 player is given `weapon_efw_IDTag` once. The scripts and markers use the tag; the DLL’s spawn grant was not isolated.
-- `efw_GetPackage` applies the recovered +15 hope bonus. Diary lines do not add hope.
-- A guard on level 2 ends the game when the player is within 180 units and not inside `efw_hiding_place`. The DLL’s hearing and line-of-sight checks are more specific than that radius.
-- The electrician must be at least 160 units away before the pliers marker gives `weapon_efw_Pliers`.
-- Choosing “Give him the pliers” while talking to Amir is the stand-in for `efw_Give`. The pliers topic in the script does not itself end the game.
+- The ID-tag board gives the tag back when it is already on the board. The gate line tells the player to collect it. The take-back itself was not a separate function in the listing.
+- Menu bytes without a server caption use a short line that names the failed check. Successful hiding loads the next map directly. In the DLL those successes open a storyboard sprite, and a later menu byte runs `efw_changelevel`.
 - Officers stay `monster_barney` so Spirit’s AI remains, and their model is `models/Security.mdl` from the prototype. `models/barney.mdl` is not in the release.
 - `env_flag` is exported and does nothing. The shipped maps do not use it.
 - Map skies named `dashdesert256` are the prototype’s `day256` images under that name. Valve’s `valve/` wads and `gfx/shell` bitmaps are not in this tree. Xash’s own `extras.pk3` supplies the menu font and shell. Textures that lived only in the commercial wads stay missing.
