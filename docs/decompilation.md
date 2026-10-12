@@ -30,9 +30,39 @@ hope = clamp(hope - deltaTime * (1/12), 0, 100)
 
 `deltaTime` is the global at `DAT_10134874`. The factor is the float constant `0.083333336`, which is `1/12` in single precision. When the result is less than or equal to zero, the server writes the debug string `Run out of hope!` through `OutputDebugStringA` and sends user-message `EFW_Menu` with byte `0x4d`.
 
-`FUN_100c4d70` adds a float to the same slot and clamps it. Menu bytes `0x3f` and `0x43` add `15` before the menu message is delivered. The value stored at level start was not recovered.
+`FUN_100c4d70` adds a float to the same slot and clamps it. `FUN_100c4d10` subtracts a float and clamps it. Menu bytes `0x3f` and `0x43` add `15` before the menu message is delivered.
 
-`FUN_100c6b60` (`ev_e53d7a0b1a1deb1164eebb52d12396c1ee2099d96d2ff3f062c8175bc03b9c40`) calls the decay function and then refreshes several other HUD slots. A cross-reference to that function lands at `0x1001bf7d`; Ghidra did not define a procedure at that address, so the caller’s period is unknown.
+`FUN_100c6740` runs once, under the debug line `STARTUP GAME`, and stores two floats:
+
+| Slot | Value |
+| --- | --- |
+| 0 | `100` (`0x42c80000`) |
+| 1 (hope) | `80` (`0x42a00000`) |
+
+The block lives in the DLL’s BSS, so both slots are 0 until that function runs. Hope is not reset on `STARTUP LEVEL`.
+
+`FUN_100c6b60` is called from `0x1001bf7d`, inside the server start-frame function at `0x1001bf50`, so the decay runs every server frame. Before the decay, `FUN_100c6a70` reads `gpGlobals->time` (`fld dword ptr [gpGlobals]`, and `time` is the first field of `globalvars_t`) and writes the step into `DAT_10134874`:
+
+```text
+step = gpGlobals->time - last
+if step < 0: step = 0
+if step > 0.2: step = 0.2
+DAT_10134874 = step
+last = gpGlobals->time
+```
+
+`0.2` is the float at `0x100e1140`. `FUN_100c5b70` returns `DAT_10134874`, and the decay multiplies that by `1/12`.
+
+Other hope changes recovered from call sites of `FUN_100c4d70` and `FUN_100c4d10`:
+
+| Site | Change |
+| --- | --- |
+| `efw_kitchen_bin` while the electrician has not seen the player | `+10`, topic `PliersInBin` on, `PLIERS_GOT_PLIERS` off, diary 6, menu byte `0x3e` |
+| same marker when `FUN_100c59c0` says the electrician saw it | `-2`, and the line `Oi! Put that back!` |
+| Gholan agrees to remove the ID tag | `+10`, topics `GholanAgreedToPloy`, `IDTAG`, and `HIDING`, diary 13 |
+| Mouhtaz hands over the lever | `+15`, gives `weapon_efw_Lever`, diary 17 |
+| Player has both `weapon_efw_WashingPowder` and `weapon_efw_MobilePhone` | `+10`, menu byte `0x47` |
+| `efw_approach_bin` when the player is not carrying pliers | gives `weapon_efw_Pliers`, `+15`, menu byte `0x45` |
 
 ## Conversation scripts
 
@@ -65,13 +95,23 @@ The server registers these user messages together. The size is the `REG_USER_MSG
 
 REA’s procedure search on `client.dll` (`ev_6cb477b067a50e7095ec975716a4d67d5f750ad63b20e2282cb9c50d28bad0c1`) named the `weapon_efw_*` link functions and not these handlers. Cross-references to the message-name strings (`ev_b6030108f5917`, `ev_08a9af6ffb01d`, `ev_6a8643b5d4193`, `ev_3a9d6bc5070b3`) land in the registration calls, which push the handler addresses above. Ghidra had not created procedures at those addresses, so the handler bodies were read from the bytes at the addresses REA reported.
 
-Observed handler behavior:
+The handlers are the functions registered with those names. Their bodies:
 
-- `EFWData` reads one byte. If it is `1`, it reads 36 further bytes into the block at `0x100bc498`.
-- `EFWShow` reads one byte. `0xff` clears the show-text slots (1000-byte stride from `0x100b7824`). Any other byte selects a slot and copies in a string.
-- `EFW_Menu` accepts a one-byte payload and passes that signed byte to the menu object.
-- `EFW_Cntxt` reads a count, then records that include world positions, and tests them against the view. This is the interaction-marker path (talk, give, hide).
-- `EFW_CtPrv` reads one byte and returns.
+- `EFWData` (`0x100418f0`) reads one byte. If it is `1`, it reads 36 further bytes (`0x24`) into `0x100bc498`. Any other kind is ignored.
+- `EFWShow` (`0x10041930`) reads one byte. `0xff` clears 14 slots of 1000 bytes (`0x3e8`) from `0x100b7824` through `0x100baed4` and sets the high-water mark to 0. Any other byte `n` raises the high-water mark to at least `n + 1` and appends `READ_STRING()` onto slot `n` (the copy starts at the existing NUL, so repeated messages concatenate).
+- `EFW_Menu` (`0x10047680`) sign-extends the one payload byte and passes it to the menu object at `0x100a5178`.
+- `EFW_CtPrv` (`0x10044bd0`) reads one byte and discards it. The server sends `(contextCount != 0)` on message id `DAT_10124908` at the end of `FUN_100c7830`.
+- `EFW_Cntxt` (`0x10044950`) reads a count, then `count * 48` bytes into `0x100bb728`. `FUN_100c7d30` is the server writer: one count byte, then `count * 0x30` bytes from `DAT_101348b0`.
+
+`FUN_100c7830` fills at most three of those 48-byte records each frame. It searches a sphere of radius `123` (`0x42f60000`) around the player. A record is:
+
+| Offset | Contents |
+| --- | --- |
+| `0x00` | kind, int32 |
+| `0x04` | targetname, 0x1d bytes, NUL-terminated |
+| `0x24` | x, y, z floats |
+
+Kind `0` is a `monster_refugee` or `monster_barney` inside 123 units. The z stored for that kind is the entity origin plus 64. Kind `1` is an `efw_Marker` (the pliers marker is omitted once the player has `weapon_efw_Pliers`; `efw_hiding_place` skips the visibility trace), or `func_door_rotating` named `efw_cage_door`. A world item whose classname begins with `weapon_efw` is stored as `100 + itemIndex`. The client projects each point and keeps the prompt only when it lands on screen. A kind-0 prompt whose targetname is `Detainee` is dropped. The label strings next to the command templates are `Talk to %C`, `Give %i to %C`, `Pick up %i`, `Take pliers`, `Hide under the building`, `Hide %i in bin`, `Force open cage door with %i`, and `Place %i on fence`. `%C` and `%i` are instructions for the client’s own format walker (`Recognised format string instruction (%` is its error string), not printf.
 
 Client strings name the commands the HUD sends back: `efw_Talk`, `efw_Give`, `efw_Pickup`, `efw_UseWithMarker`, `efw_HideUnderBuilding`, `efw_ShowMenu`, `efw_diary`, `efw_diary_next`, `efw_diary_prev`, `efw_changelevel`, and `efw_pause`.
 
@@ -83,10 +123,12 @@ Client storyboard names mark the chapter changes and endings: introduction, hidi
 
 ## Unknowns
 
-- The hope value written when a map starts.
-- Whether `DAT_10134874` is frame time or a slower tick. The decay formula uses it as a time step; the call period of `FUN_100c6b60` was not recovered.
-- The full flex grammar. The line shape above is what the shipped scripts and the loader strings support. The generated parser was not decompiled function by function.
-- Most of `EscapeFromWoomera.dll` is Spirit of Half-Life. Those functions were not re-copied here.
+- The generated flex parser was not decompiled production by production. The line shape above is what the shipped scripts and the loader strings support.
+- Most of `EscapeFromWoomera.dll` is Spirit of Half-Life. Those functions were not re-copied here; the browser links the Spirit 1.2 sources.
+- The client format walker that expands `%C`, `%c`, `%i`, `%d`, and `%u` was not lifted instruction by instruction. The templates and the 48-byte record they read are above.
+- `FUN_100c59c0`, the “electrician saw you” test on the bin, was not reduced to a trace or a radius. The browser still uses a 160-unit distance for that refusal, and applies the recovered `-2` hope.
+- Gholan’s ID-tag bargain (`+10`, diary 13) and Mouhtaz’s lever (`+15`, diary 17) are separate server functions. They are not yet called from the conversation picker.
+- The string `Conversation hidden, partner too far` is not in this DLL’s `.rdata`. The 220-unit drop used by the browser port is still an assumption.
 
 ## Browser engine
 
@@ -94,10 +136,10 @@ The playable page runs [Xash3D FWGS](https://github.com/FWGS/xash3d-fwgs) from t
 
 `engine/efw/efw_game.cpp` is a structured port of the recovered grammar and the hope formula. It is not Ghidra’s C compiled as-is. The client reads one `EFWShow` layout written by that port (kind byte, hope byte, line count, strings). That layout is the browser HUD. It is not the slot protocol observed in `client.dll`.
 
+Hope starts at 80, and the decay step is `gpGlobals->frametime` clamped to `[0, 0.2]`. A person named `Detainee` does not get the talk prompt. Other refugees and barneys are eligible inside 123 units. Stashing the pliers adds 10 hope; the electrician catching that attempt subtracts 2.
+
 These choices are not recovered facts:
 
-- Hope starts at 100 so the recovered decay can reach 0. The DLL’s initial store was not found.
-- The decay step is `gpGlobals->frametime`. Whether `DAT_10134874` is frame time is unknown.
 - The level-1 player is given `weapon_efw_IDTag` once. The scripts and markers use the tag; the DLL’s spawn grant was not isolated.
 - `efw_GetPackage` applies the recovered +15 hope bonus. Diary lines do not add hope.
 - A guard on level 2 ends the game when the player is within 180 units and not inside `efw_hiding_place`. The DLL’s hearing and line-of-sight checks are more specific than that radius.

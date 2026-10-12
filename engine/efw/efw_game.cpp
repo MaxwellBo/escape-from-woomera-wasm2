@@ -13,14 +13,20 @@
 #include "efw/efw.h"
 
 // Recovered from EscapeFromWoomera.dll and linked into the Spirit of Half-Life
-// SDK. Hope is float slot 1: clamp(hope - deltaTime * (1/12), 0, 100).
-// Menu bytes 0x3f and 0x43 add 15. The value stored at map start was not in
-// the DLL; 100 is the playable cap so the recovered decay can empty it.
-// DAT_10134874's call period was not recovered; this build feeds gpGlobals->frametime.
+// SDK. Hope is float slot 1. FUN_100c6740 stores 80 at startup. Each server
+// frame FUN_100c6a70 writes min(max(gpGlobals->time - last, 0), 0.2) into
+// DAT_10134874, and FUN_100c6ad0 does clamp(hope - step * (1/12), 0, 100).
+// Menu bytes 0x3f and 0x43 add 15. Stashing the pliers adds 10. The electrician
+// catching that stash subtracts 2.
 
 static const float HOPE_MAX = 100.0f;
+static const float HOPE_START = 80.0f;
 static const float HOPE_DECAY = 1.0f / 12.0f;
+static const float HOPE_MAX_STEP = 0.2f;
 static const float HOPE_BONUS = 15.0f;
+static const float HOPE_BIN_BONUS = 10.0f;
+static const float HOPE_CAUGHT = 2.0f;
+static const float TALK_RADIUS = 123.0f;
 
 static const char *SCRIPT_FILES[] = {
 	"Amir", "Detainee", "Electrician", "Elika", "Fashid", "Gate_Guard", "Gholan",
@@ -63,7 +69,7 @@ static char g_seen[MAX_SEEN][72];
 static int g_nseen = 0;
 static int g_diary[MAX_DIARY];
 static int g_ndiary = 0;
-static float g_hope = HOPE_MAX;
+static float g_hope = HOPE_START;
 static int g_loaded = 0;
 static int g_gaveTag = 0;
 static int g_tagOnBoard = 0;
@@ -615,7 +621,8 @@ static int try_marker(CBasePlayer *player)
 			}
 			CBaseEntity *electrician = UTIL_FindEntityByTargetname(NULL, "efw_electrician");
 			if (electrician && (electrician->pev->origin - player->pev->origin).Length() < 160) {
-				ClientPrint(player->pev, HUD_PRINTCENTER, "The electrician is too close.");
+				add_hope(-HOPE_CAUGHT);
+				ClientPrint(player->pev, HUD_PRINTCENTER, "Oi! Put that back!");
 				return 1;
 			}
 			if (!has_weapon(player, "weapon_efw_Pliers"))
@@ -631,6 +638,9 @@ static int try_marker(CBasePlayer *player)
 			}
 			take_weapon(player, "weapon_efw_Pliers");
 			g_pliersInBin = 1;
+			set_topic("PliersInBin", 1);
+			set_topic("PLIERS_GOT_PLIERS", 0);
+			add_hope(HOPE_BIN_BONUS);
 			ClientPrint(player->pev, HUD_PRINTCENTER, "You stash the pliers in the bin.");
 			return 1;
 		}
@@ -719,9 +729,11 @@ int Efw_TryUse(CBasePlayer *player)
 		return 1;
 	}
 	if (try_marker(player)) return 1;
-	CBaseEntity *npc = nearest_named(player, "monster_refugee", 140);
-	if (!npc) npc = nearest_named(player, "monster_barney", 140);
+	CBaseEntity *npc = nearest_named(player, "monster_refugee", TALK_RADIUS);
+	if (!npc) npc = nearest_named(player, "monster_barney", TALK_RADIUS);
 	if (!npc) return 0;
+	// The client drops a kind-0 prompt when the targetname is "Detainee".
+	if (!strcmp(STRING(npc->pev->targetname), "Detainee")) return 0;
 	UTIL_MakeVectors(player->pev->v_angle);
 	Vector los = (npc->pev->origin - (player->pev->origin + player->pev->view_ofs)).Normalize();
 	if (DotProduct(los, gpGlobals->v_forward) < 0.15f) return 0;
@@ -762,7 +774,10 @@ void Efw_StartFrame()
 			player->GiveNamedItem("weapon_efw_IDTag");
 	}
 
-	g_hope -= gpGlobals->frametime * HOPE_DECAY;
+	float step = gpGlobals->frametime;
+	if (step < 0) step = 0;
+	if (step > HOPE_MAX_STEP) step = HOPE_MAX_STEP;
+	g_hope -= step * HOPE_DECAY;
 	clamp_hope();
 	if (g_hope <= 0)
 		set_ending(player, 1, "Run out of hope!");
