@@ -5,6 +5,7 @@ class CBaseMonster;
 struct edict_s;
 
 void Efw_StartFrame();
+void Efw_Precache();
 int Efw_ClientCommand(edict_s *player);
 int Efw_TryUse(CBasePlayer *player);
 

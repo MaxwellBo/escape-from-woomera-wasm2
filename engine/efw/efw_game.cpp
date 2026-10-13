@@ -89,6 +89,12 @@ static int g_tagOnBoard = 0;
 static int g_pliersInBin = 0;
 static int g_binFails = 0;
 static int g_ending = 0;
+static int g_board = 0;
+static int g_hopeDead = 0;
+static int g_caught = 0;
+static char g_capLines[8][80];
+static int g_capN = 0;
+static float g_capUntil = 0;
 static int g_msgsReady = 0;
 static int gmsgEfw = 0;
 static float g_nextHopeSend = 0;
@@ -108,6 +114,25 @@ static char g_activeTopic[32];
 static int g_cmdsApplied = 0;
 
 static int g_level = 1;
+static int g_seenLevel = 0;
+static int g_freshMap = 0;
+
+// FUN_100c7670 / FUN_100c7740. Level 1 plays the next clip when fmod(time, 120)
+// is within 0.5s and the accumulator has passed 5s. Slot 0 is the mail call.
+// Stashing the pliers (FUN_100c77c0) forces that slot. EndMail clears the flag.
+static const char *ANN_WAVS[] = {
+	"Ann_RAR_124.wav",
+	"Ann_HAM_103.wav",
+	"Ann_TRE_046.wav",
+	"Ann_PHA_216.wav",
+	"callToPrayer.wav",
+};
+static int g_annArmed = 0;
+static int g_annIndex = 0;
+static float g_annAcc = 5.0f;
+static float g_annTime = 0;
+static int g_annReady = 0;
+static int g_soundsReady = 0;
 
 static void copy_cap(char *dst, int dstlen, const char *src)
 {
@@ -363,12 +388,59 @@ static void remember_diary(int id, int focus)
 	if (focus == 0) g_diaryIndex = index;
 }
 
+static void play_sample(CBasePlayer *player, const char *sample)
+{
+	if (!player || !sample || !sample[0]) return;
+	// FUN_100c75e0. Channel 3, volume 1, attenuation 1.25, pitch 81-100.
+	int pitch = 100 - (rand() % 20);
+	EMIT_SOUND_DYN(player->edict(), CHAN_ITEM, sample, 1.0f, ATTN_STATIC, 0, pitch);
+}
+
+void Efw_Precache()
+{
+	if (g_soundsReady) return;
+	g_soundsReady = 1;
+	for (int i = 0; i < 5; i++) PRECACHE_SOUND((char *)ANN_WAVS[i]);
+	PRECACHE_SOUND("Dingaling.wav");
+}
+
 static void add_diary(CBasePlayer *player, int id)
 {
 	int before = g_ndiary;
 	remember_diary(id, 0);
-	if (player && g_ndiary != before)
+	if (player && g_ndiary != before) {
+		// FUN_100c6890 plays Dingaling.wav when the id is new.
+		play_sample(player, "Dingaling.wav");
 		ClientPrint(player->pev, HUD_PRINTTALK, UTIL_VarArgs("Diary entry %d.\n", id));
+	}
+}
+
+static void arm_mail(CBasePlayer *player)
+{
+	g_annArmed = 1;
+	g_annAcc = 0;
+	play_sample(player, ANN_WAVS[0]);
+}
+
+static void tick_announcer(CBasePlayer *player)
+{
+	// FUN_100c6c10 calls the timer only while the chapter byte is 0 (level 1).
+	if (g_level != 1 || !player) return;
+	float now = gpGlobals->time;
+	if (!g_annReady) {
+		g_annTime = now;
+		g_annReady = 1;
+	}
+	g_annAcc += now - g_annTime;
+	g_annTime = now;
+	float phase = fmodf(now, 120.0f);
+	if (phase < 0) phase += 120.0f;
+	if (phase > 0.5f || g_annAcc <= 5.0f) return;
+	const char *sample = g_annArmed ? ANN_WAVS[0] : ANN_WAVS[g_annIndex + 1];
+	play_sample(player, sample);
+	g_annAcc = 0;
+	g_annIndex++;
+	if (g_annIndex > 3) g_annIndex = 0;
 }
 
 // FUN_100c6780. Index 0 is a sentinel the next/prev commands skip. Levels 2 and
@@ -418,6 +490,11 @@ static int map_level()
 
 static void send_panel(CBasePlayer *player);
 static const char *interact_hint(CBasePlayer *player);
+static const char *menu_sprite(int id);
+static const char *menu_next(int id);
+static const char *menu_caption(int id);
+static void present_menu(CBasePlayer *player, int id);
+static void show_caption(CBasePlayer *player, const char *text);
 
 static void set_ending(CBasePlayer *player, int ending, const char *text)
 {
@@ -434,6 +511,11 @@ static void set_ending(CBasePlayer *player, int ending, const char *text)
 static void change_map(const char *map)
 {
 	g_talking = 0;
+	g_board = 0;
+	g_caught = 0;
+	g_hope = HOPE_START;
+	g_hopeDead = 0;
+	g_annReady = 0;
 	CHANGE_LEVEL((char *)map, NULL);
 }
 
@@ -479,7 +561,10 @@ static void apply_commands(CBasePlayer *player, const char *commands)
 				if (!has_weapon(player, "weapon_efw_MobilePhone"))
 					player->GiveNamedItem("weapon_efw_MobilePhone");
 				add_hope(HOPE_PACKAGE);
-				ClientPrint(player->pev, HUD_PRINTCENTER, "A package. Washing powder, a phone, and a little hope.");
+				present_menu(player, 0x47);
+				g_annArmed = 0;
+			} else if (!strcmp(arg, "efw_EndMailPickupMessage")) {
+				g_annArmed = 0;
 			}
 		}
 	}
@@ -523,11 +608,11 @@ static void say_gap(CBasePlayer *player, const char *text)
 {
 	static float next = 0;
 	static char last[180];
-	if (!player || !text) return;
+	if (!player || !text || g_board) return;
 	if (gpGlobals->time < next && !strcmp(last, text)) return;
 	copy_cap(last, sizeof(last), text);
 	next = gpGlobals->time + 3.0f;
-	ClientPrint(player->pev, HUD_PRINTCENTER, text);
+	show_caption(player, text);
 }
 
 // DLL item table at 0x100f81e0. These are not the port's weapon slot numbers.
@@ -569,6 +654,16 @@ static void send_panel(CBasePlayer *player)
 {
 	if (!player || !g_msgsReady) return;
 	int hopeByte = g_hope > 0 ? (int)(g_hope + 0.5f) : 0;
+	if (g_board) {
+		const char *sprite = menu_sprite(g_board);
+		MESSAGE_BEGIN(MSG_ONE, gmsgEfw, NULL, player->pev);
+		WRITE_BYTE(4);
+		WRITE_BYTE(hopeByte);
+		WRITE_STRING(sprite ? sprite : "");
+		WRITE_BYTE(menu_next(g_board) ? 1 : 0);
+		MESSAGE_END();
+		return;
+	}
 	// Slot 5 in the DLL is the diary-open flag. The client draws
 	// sprites/efw_diary_%02d.spr for the id in the current page slot.
 	if (g_diaryOpen && !g_talking) {
@@ -587,12 +682,17 @@ static void send_panel(CBasePlayer *player)
 	WRITE_BYTE(2);
 	WRITE_BYTE(hopeByte);
 	if (!g_talking) {
-		const char *hint = interact_hint(player);
-		if (hint) {
-			WRITE_BYTE(1);
-			write_short(hint);
+		if (g_capN > 0 && gpGlobals->time < g_capUntil) {
+			WRITE_BYTE(g_capN);
+			for (int i = 0; i < g_capN; i++) write_short(g_capLines[i]);
 		} else {
-			WRITE_BYTE(0);
+			const char *hint = interact_hint(player);
+			if (hint) {
+				WRITE_BYTE(1);
+				write_short(hint);
+			} else {
+				WRITE_BYTE(0);
+			}
 		}
 	} else if (g_mode == 0) {
 		WRITE_BYTE(g_nchoices + 1);
@@ -612,6 +712,119 @@ static void send_panel(CBasePlayer *player)
 		write_short(g_page + 1 < g_npages ? "E continues" : "E closes");
 	}
 	MESSAGE_END();
+}
+
+// FUN_100c81d0 caption table. These bytes return before the client menu is sent.
+static const char *menu_caption(int id)
+{
+	switch (id) {
+	case 0x3c: return "You realise that the guard will search you and find the pliers, and so decide not to leave the kitchen.";
+	case 0x3d: return "You wait until the electrician is not looking, and quickly grab the pliers from the workbench. He doesn't notice, and you hide them under your shirt. Heart pounding, you wonder how to safely get them to Amir.";
+	case 0x3e: return "Again, you wait for the ideal moment to retrieve the pliers from under your shirt and slowly lower them into the bin, careful to not make a sound.";
+	case 0x40: return "There's a hole. You could hide here, if you ever needed to.";
+	case 0x41: return "You could hide here, but you'd be caught at dusk when the guards saw your ID tag and came searching.";
+	case 0x42: return "You could hide here and come out at night to get the pliers, if only you had a way to break into the rubbish bin cage.";
+	case 0x44: return "You could hide again, but you haven't got the pliers yet.";
+	case 0x45: return "You recognise the bin in front of you as the one from the kitchen earlier today. You open the top and dig around inside, and sure enough, the pliers are still there. You retrieve them from the foodscraps and rubbish, and hide them in your clothes. Now to work out how to safely get these back to your fellow plotters.";
+	case 0x47: return "The package is from a pen-friend, a member of a refugee support group in Melbourne. The letter accompanying it brings you some hope, knowing that there is someone in this country that cares about your fate. Inside the package are some chocolate bars, which you give to some children, and a box of washing powder. Your suspicions aroused by mysterious rattling sound, you feel inside the box and discover a SIM card for a mobile phone.";
+	default: return NULL;
+	}
+}
+
+// Client FUN_10047830. Click commands are the strings filled at 0x100bc884.
+static const char *menu_sprite(int id)
+{
+	switch (id) {
+	case 0x3f: return "Storyboard/EFW_Storyboards_Hiding_Day.spr";
+	case 0x43: return "Storyboard/EFW_Storyboards_Hiding_Night.spr";
+	case 0x46: return "Storyboard/EFW_Storyboards_Isolation.spr";
+	case 0x49: return "Storyboard/EFW_Storyboards_Introduction_1.spr";
+	case 0x4a: return "Storyboard/EFW_Storyboards_Introduction_2.spr";
+	case 0x4b: return "Storyboard/EFW_Storyboards_Introduction_3.spr";
+	case 0x4c: return "Storyboard/EFW_Storyboards_Ending_Positive.spr";
+	case 0x4d: return "Storyboard/EFW_Sb_Ending_Iso.spr";
+	case 0x4e: return "Storyboard/EFW_Sb_Ending_Dep.spr";
+	case 0x4f: return "Storyboard/EFW_Storyboards_Decoy_Remove.spr";
+	case 0x50: return "Storyboard/EFW_Storyboards_Dec_Replace.spr";
+	case 0x51: return "Storyboard/EFW_Storyboards_Isolation.spr";
+	case 0x52: return "Storyboard/EFW_Storyboards_Help_Screen.spr";
+	default: return NULL;
+	}
+}
+
+static const char *menu_next(int id)
+{
+	switch (id) {
+	case 0x3f: return "efw_ShowMenu 79";
+	case 0x43: return "efw_ShowMenu 80";
+	case 0x46: return "efw_changelevel efw_prototype_level2";
+	case 0x49: return "efw_ShowMenu 74";
+	case 0x4a: return "efw_ShowMenu 75";
+	case 0x4c: return "efw_changelevel efw_prototype_level1";
+	case 0x4d: return "efw_ShowMenu 78";
+	case 0x4e: return "efw_changelevel efw_prototype_level1";
+	case 0x4f: return "efw_changelevel efw_prototype_level2";
+	case 0x50: return "efw_changelevel efw_prototype_level3";
+	default: return NULL;
+	}
+}
+
+static void show_caption(CBasePlayer *player, const char *text)
+{
+	if (!player || !text || g_board) return;
+	ClientPrint(player->pev, HUD_PRINTCONSOLE, UTIL_VarArgs("%s\n", text));
+	g_talking = 0;
+	g_capN = 0;
+	const char *p = text;
+	while (*p && g_capN < 8) {
+		int len = 0;
+		int lastSpace = -1;
+		while (p[len] && len < 72) {
+			if (p[len] == ' ') lastSpace = len;
+			len++;
+		}
+		int take = (p[len] && lastSpace > 24) ? lastSpace : len;
+		memcpy(g_capLines[g_capN], p, take);
+		g_capLines[g_capN][take] = 0;
+		g_capN++;
+		p += take;
+		while (*p == ' ') p++;
+	}
+	g_capUntil = gpGlobals->time + 12.0f;
+	send_panel(player);
+}
+
+static void dismiss_board(CBasePlayer *player);
+
+static void present_menu(CBasePlayer *player, int id)
+{
+	if (id == 0x3f || id == 0x43) add_hope(HOPE_BONUS);
+	const char *caption = menu_caption(id);
+	if (caption && !menu_sprite(id)) {
+		show_caption(player, caption);
+		return;
+	}
+	g_board = id;
+	g_talking = 0;
+	g_diaryOpen = 0;
+	if (player) {
+		player->pev->flags |= FL_FROZEN;
+		send_panel(player);
+	}
+}
+
+static void dismiss_board(CBasePlayer *player)
+{
+	int id = g_board;
+	g_board = 0;
+	if (player && !g_ending) player->pev->flags &= ~FL_FROZEN;
+	const char *next = menu_next(id);
+	if (player) send_panel(player);
+	if (!next || !player) return;
+	if (!strncmp(next, "efw_ShowMenu ", 13))
+		present_menu(player, atoi(next + 13));
+	else if (!strncmp(next, "efw_changelevel ", 16))
+		change_map(next + 16);
 }
 
 static void open_topics(CBasePlayer *player, const char *targetname)
@@ -696,7 +909,8 @@ static void pick_choice(CBasePlayer *player, int index)
 	if (!g_talking || g_mode != 0 || index < 0 || index >= g_nchoices) return;
 	if (g_choiceEntry[index] == -1) {
 		take_weapon(player, "weapon_efw_Pliers");
-		set_ending(player, 3, "Well done! Your bravery and cleverness have helped bring us all one step closer to freedom!");
+		ClientPrint(player->pev, HUD_PRINTCENTER, "Well done! Your bravery and cleverness have helped bring us all one step closer to freedom!");
+		present_menu(player, 0x4c);
 		return;
 	}
 	if (g_choiceEntry[index] == -2) {
@@ -786,7 +1000,8 @@ static int try_pickup_pliers(CBasePlayer *player)
 	if (!has_weapon(player, "weapon_efw_Pliers"))
 		player->GiveNamedItem("weapon_efw_Pliers");
 	set_topic("PLIERS_GOT_PLIERS", 1);
-	ClientPrint(player->pev, HUD_PRINTCENTER, "You take the pliers.");
+	if (g_level == 1) present_menu(player, 0x3d);
+	else ClientPrint(player->pev, HUD_PRINTCENTER, "You take the pliers.");
 	return 1;
 }
 
@@ -810,8 +1025,9 @@ static int try_stash_bin(CBasePlayer *player)
 	set_topic("PLIERS_GOT_PLIERS", 0);
 	set_topic("OFFICE", 1);
 	add_hope(HOPE_BIN_BONUS);
+	arm_mail(player);
 	add_diary(player, 6);
-	ClientPrint(player->pev, HUD_PRINTCENTER, "You stash the pliers in the bin.");
+	present_menu(player, 0x3e);
 	return 1;
 }
 
@@ -821,30 +1037,26 @@ static int try_hide(CBasePlayer *player)
 	// Success sends menu 0x3f or 0x43, and both of those add 15 hope.
 	if (g_level == 1) {
 		if (!topic_on("PliersInBin")) {
-			ClientPrint(player->pev, HUD_PRINTCENTER, "The pliers are not hidden in the bin.");
+			present_menu(player, 0x40);
 			return 1;
 		}
 		if (!topic_on("GholanAgreedToPloy")) {
-			ClientPrint(player->pev, HUD_PRINTCENTER, "Gholan has not agreed to move your ID tag.");
+			present_menu(player, 0x41);
 			return 1;
 		}
 		if (!has_weapon(player, "weapon_efw_Lever")) {
-			ClientPrint(player->pev, HUD_PRINTCENTER, "You need the metal lever.");
+			present_menu(player, 0x42);
 			return 1;
 		}
-		add_hope(HOPE_BONUS);
-		ClientPrint(player->pev, HUD_PRINTCENTER, "You hide. Night falls.");
-		change_map("efw_prototype_level2");
+		present_menu(player, 0x3f);
 		return 1;
 	}
 	if (g_level == 2) {
 		if (!has_weapon(player, "weapon_efw_Pliers")) {
-			ClientPrint(player->pev, HUD_PRINTCENTER, "You need the pliers.");
+			present_menu(player, 0x44);
 			return 1;
 		}
-		add_hope(HOPE_BONUS);
-		ClientPrint(player->pev, HUD_PRINTCENTER, "Dawn. You slip back into the camp.");
-		change_map("efw_prototype_level3");
+		present_menu(player, 0x43);
 		return 1;
 	}
 	return 0;
@@ -918,7 +1130,7 @@ static int blocked_trigger(CBasePlayer *player)
 		const char *name = trigger_label(ent);
 		if (!strcmp(name, "efw_kitchen_door")) {
 			if (has_weapon(player, "weapon_efw_Pliers")) {
-				say_gap(player, "You can't enter the kitchen while you are carrying the pliers.");
+				say_gap(player, menu_caption(0x3c));
 				blocked = 1;
 			} else if (!topic_on("OnKitchenRoster")) {
 				say_gap(player, "Where do you think you're going? You can't enter without a kitchen pass.");
@@ -959,7 +1171,7 @@ static int blocked_trigger(CBasePlayer *player)
 				player->GiveNamedItem("weapon_efw_Pliers");
 				set_topic("PLIERS_GOT_PLIERS", 1);
 				add_hope(HOPE_BONUS);
-				ClientPrint(player->pev, HUD_PRINTCENTER, "You take the pliers.");
+				present_menu(player, 0x45);
 			}
 		}
 	}
@@ -1000,14 +1212,21 @@ void Efw_GuardSpot(CBaseMonster *guard)
 	CBasePlayer *player = live_player();
 	if (!player) return;
 	if (Efw_PlayerIsHiding()) return;
-	if (guard_sees(guard, player))
-		set_ending(player, 2, "A guard catches you. Isolation.");
+	if (g_caught || g_board) return;
+	if (guard_sees(guard, player)) {
+		g_caught = 1;
+		present_menu(player, 0x46);
+	}
 }
 
 static int try_interact(CBasePlayer *player)
 {
 	if (!player || g_ending) return 0;
 	load_scripts();
+	if (g_board) {
+		dismiss_board(player);
+		return 1;
+	}
 	if (g_talking) {
 		if (g_mode == 1) advance_page(player);
 		else g_talking = 0, send_panel(player);
@@ -1107,7 +1326,8 @@ static void give_item(CBasePlayer *player, const char *cls, const char *who)
 	if (!strcmp(cls, "weapon_efw_Pliers")) {
 		if (!strcmp(who, "Amir")) {
 			take_weapon(player, cls);
-			set_ending(player, 3, "Well done! Your bravery and cleverness have helped bring us all one step closer to freedom!");
+			ClientPrint(player->pev, HUD_PRINTCENTER, "Well done! Your bravery and cleverness have helped bring us all one step closer to freedom!");
+			present_menu(player, 0x4c);
 			return;
 		}
 		if (!strcmp(who, "Fashid")) {
@@ -1168,6 +1388,12 @@ int Efw_ClientCommand(edict_t *pent)
 		try_hide(player);
 	else if (!strcmp(cmd, "efw_changelevel") && CMD_ARGC() > 1)
 		change_map(CMD_ARGV(1));
+	else if (!strcmp(cmd, "efw_ShowMenu") && CMD_ARGC() > 1)
+		present_menu(player, atoi(CMD_ARGV(1)));
+	else if (!strcmp(cmd, "efw_HelpScreen"))
+		present_menu(player, 0x52);
+	else if (!strcmp(cmd, "efw_board"))
+		dismiss_board(player);
 	else if (!strcmp(cmd, "efw_diary")) {
 		// Toggle slot 5. efw_diary_next / efw_diary_prev force it open and
 		// walk the page index, wrapping past the sentinel at index 0.
@@ -1204,15 +1430,36 @@ void Efw_StartFrame()
 {
 	load_scripts();
 	g_level = map_level();
+	// FUN_100c6740 restates hope when a chapter starts. ChangeLevel can
+	// restore the server globals from before that write, so the new map's
+	// first frames apply it again.
+	if (g_seenLevel != g_level) {
+		int previous = g_seenLevel;
+		g_seenLevel = g_level;
+		if (previous != 0) {
+			g_hope = HOPE_START;
+			g_hopeDead = 0;
+			g_board = 0;
+			g_caught = 0;
+			g_annReady = 0;
+			g_talking = 0;
+			g_freshMap = 1;
+		}
+	}
 	if (!g_msgsReady) {
 		gmsgEfw = REG_USER_MSG("EFWShow", -1);
 		g_msgsReady = 1;
 		refresh_doors();
 	}
 	CBasePlayer *player = live_player();
+	if (player && g_freshMap) {
+		player->pev->flags &= ~FL_FROZEN;
+		g_freshMap = 0;
+	}
 	if (!player || g_ending) return;
 	seed_diary();
 	drive_electrician();
+	tick_announcer(player);
 
 	if (!g_gaveTag && g_level == 1) {
 		g_gaveTag = 1;
@@ -1225,8 +1472,10 @@ void Efw_StartFrame()
 	if (step > HOPE_MAX_STEP) step = HOPE_MAX_STEP;
 	g_hope -= step * HOPE_DECAY;
 	clamp_hope();
-	if (g_hope <= 0)
-		set_ending(player, 1, "Run out of hope!");
+	if (g_hope <= 0 && !g_hopeDead && !g_board) {
+		g_hopeDead = 1;
+		present_menu(player, 0x4d);
+	}
 
 	if (!blocked_trigger(player)) {
 		g_safeOrigin = player->pev->origin;

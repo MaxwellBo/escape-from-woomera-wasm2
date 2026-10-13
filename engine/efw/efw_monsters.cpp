@@ -27,6 +27,7 @@ LINK_ENTITY_TO_CLASS(monster_refugee, CRefugee)
 void CRefugee::Precache()
 {
 	PRECACHE_MODEL((char *)refugee_model(STRING(pev->targetname)));
+	Efw_Precache();
 }
 
 void CRefugee::Spawn()
@@ -68,6 +69,7 @@ LINK_ENTITY_TO_CLASS(monster_patrol_guard, CPatrolGuard)
 void CPatrolGuard::Precache()
 {
 	PRECACHE_MODEL("models/Security.mdl");
+	Efw_Precache();
 }
 
 void CPatrolGuard::Spawn()
