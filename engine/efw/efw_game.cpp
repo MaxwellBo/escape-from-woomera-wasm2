@@ -79,6 +79,9 @@ static char g_seen[MAX_SEEN][72];
 static int g_nseen = 0;
 static int g_diary[MAX_DIARY];
 static int g_ndiary = 0;
+static int g_diaryIndex = 1;
+static int g_diaryOpen = 0;
+static int g_diaryReady = 0;
 static float g_hope = HOPE_START;
 static int g_loaded = 0;
 static int g_gaveTag = 0;
@@ -350,11 +353,37 @@ static void add_hope(float amount)
 	clamp_hope();
 }
 
-static void add_diary(CBasePlayer *player, int id)
+// FUN_100c6890. focus 0 jumps the open page to the new entry. focus 2 leaves it.
+static void remember_diary(int id, int focus)
 {
 	for (int i = 0; i < g_ndiary; i++) if (g_diary[i] == id) return;
-	if (g_ndiary < MAX_DIARY) g_diary[g_ndiary++] = id;
-	if (player) ClientPrint(player->pev, HUD_PRINTTALK, UTIL_VarArgs("Diary entry %d.\n", id));
+	if (g_ndiary >= MAX_DIARY) return;
+	int index = g_ndiary;
+	g_diary[g_ndiary++] = id;
+	if (focus == 0) g_diaryIndex = index;
+}
+
+static void add_diary(CBasePlayer *player, int id)
+{
+	int before = g_ndiary;
+	remember_diary(id, 0);
+	if (player && g_ndiary != before)
+		ClientPrint(player->pev, HUD_PRINTTALK, UTIL_VarArgs("Diary entry %d.\n", id));
+}
+
+// FUN_100c6780. Index 0 is a sentinel the next/prev commands skip. Levels 2 and
+// 3 already contain entries 2 through 10.
+static void seed_diary()
+{
+	if (!g_diaryReady) {
+		remember_diary(0, 2);
+		remember_diary(1, 2);
+		g_diaryIndex = 1;
+		g_diaryReady = 1;
+	}
+	if (g_level >= 2) {
+		for (int id = 2; id <= 10; id++) remember_diary(id, 2);
+	}
 }
 
 static float angle_between(const Vector &dir, const Vector &forward)
@@ -388,6 +417,7 @@ static int map_level()
 }
 
 static void send_panel(CBasePlayer *player);
+static const char *interact_hint(CBasePlayer *player);
 
 static void set_ending(CBasePlayer *player, int ending, const char *text)
 {
@@ -538,11 +568,32 @@ static void write_short(const char *s)
 static void send_panel(CBasePlayer *player)
 {
 	if (!player || !g_msgsReady) return;
+	int hopeByte = g_hope > 0 ? (int)(g_hope + 0.5f) : 0;
+	// Slot 5 in the DLL is the diary-open flag. The client draws
+	// sprites/efw_diary_%02d.spr for the id in the current page slot.
+	if (g_diaryOpen && !g_talking) {
+		int id = 0;
+		if (g_diaryIndex > 0 && g_diaryIndex < g_ndiary) id = g_diary[g_diaryIndex];
+		if (id < 0) id = 0;
+		if (id > 255) id = 255;
+		MESSAGE_BEGIN(MSG_ONE, gmsgEfw, NULL, player->pev);
+		WRITE_BYTE(3);
+		WRITE_BYTE(hopeByte);
+		WRITE_BYTE(id);
+		MESSAGE_END();
+		return;
+	}
 	MESSAGE_BEGIN(MSG_ONE, gmsgEfw, NULL, player->pev);
 	WRITE_BYTE(2);
-	WRITE_BYTE(g_hope > 0 ? (int)(g_hope + 0.5f) : 0);
+	WRITE_BYTE(hopeByte);
 	if (!g_talking) {
-		WRITE_BYTE(0);
+		const char *hint = interact_hint(player);
+		if (hint) {
+			WRITE_BYTE(1);
+			write_short(hint);
+		} else {
+			WRITE_BYTE(0);
+		}
 	} else if (g_mode == 0) {
 		WRITE_BYTE(g_nchoices + 1);
 		write_short(UTIL_VarArgs("Talking to %s", g_partner));
@@ -704,6 +755,25 @@ static CBaseEntity *nearest_named(CBasePlayer *player, const char *classname, fl
 		}
 	}
 	return found;
+}
+
+static const char *interact_hint(CBasePlayer *player)
+{
+	if (!player) return NULL;
+	CBaseEntity *ent = NULL;
+	while ((ent = UTIL_FindEntityByClassname(ent, "efw_Marker")) != NULL) {
+		if (!point_in_entity(player->pev->origin, ent, 24)) continue;
+		const char *name = STRING(ent->pev->targetname);
+		if (!strcmp(name, "efw_PliersMarker")) return "E: Take the pliers";
+		if (!strcmp(name, "efw_kitchen_bin")) return "E: Hide the pliers in the bin";
+		if (!strcmp(name, "efw_hiding_place")) return "E: Hide here";
+		if (!strcmp(name, "efw_IDTag_Position")) return "E: Use the ID tag board";
+	}
+	CBaseEntity *npc = nearest_named(player, "monster_refugee", TALK_RADIUS);
+	if (!npc) npc = nearest_named(player, "monster_barney", TALK_RADIUS);
+	if (!npc) return NULL;
+	if (!strcmp(STRING(npc->pev->targetname), "Detainee")) return NULL;
+	return UTIL_VarArgs("E: Talk to %s", STRING(npc->pev->targetname));
 }
 
 static int try_pickup_pliers(CBasePlayer *player)
@@ -934,10 +1004,9 @@ void Efw_GuardSpot(CBaseMonster *guard)
 		set_ending(player, 2, "A guard catches you. Isolation.");
 }
 
-int Efw_TryUse(CBasePlayer *player)
+static int try_interact(CBasePlayer *player)
 {
 	if (!player || g_ending) return 0;
-	if (!(player->m_afButtonPressed & IN_USE)) return 0;
 	load_scripts();
 	if (g_talking) {
 		if (g_mode == 1) advance_page(player);
@@ -956,6 +1025,51 @@ int Efw_TryUse(CBasePlayer *player)
 	if (DotProduct(los, gpGlobals->v_forward) < 0.15f) return 0;
 	Efw_BeginTalk(player, STRING(npc->pev->targetname));
 	return 1;
+}
+
+int Efw_TryUse(CBasePlayer *player)
+{
+	if (!player || g_ending) return 0;
+	if (!(player->m_afButtonPressed & IN_USE)) return 0;
+	return try_interact(player);
+}
+
+// The map path walks him out of the 256-unit sight radius. Nothing in the
+// map triggers efw_electrician, so a wait-for-trigger schedule leaves him
+// on top of the pliers. This drives path_corner targets at a walk.
+static char g_elecCorner[32];
+
+static void drive_electrician()
+{
+	CBaseEntity *elec = UTIL_FindEntityByTargetname(NULL, "efw_electrician");
+	if (!elec) return;
+	elec->pev->nextthink = 0;
+	if (!g_elecCorner[0]) {
+		const char *start = STRING(elec->pev->target);
+		if (!start || !start[0]) start = "efw_electrician_path_1";
+		copy_cap(g_elecCorner, 32, start);
+	}
+	CBaseEntity *corner = UTIL_FindEntityByTargetname(NULL, g_elecCorner);
+	if (!corner) return;
+	Vector delta = corner->pev->origin - elec->pev->origin;
+	delta.z = 0;
+	float dist = delta.Length();
+	if (dist < 32) {
+		const char *next = STRING(corner->pev->target);
+		if (next && next[0]) copy_cap(g_elecCorner, 32, next);
+		elec->pev->velocity.x = 0;
+		elec->pev->velocity.y = 0;
+		return;
+	}
+	Vector dir = delta * (1.0f / dist);
+	float step = 70.0f * gpGlobals->frametime;
+	if (step > dist) step = dist;
+	Vector next = elec->pev->origin + dir * step;
+	next.z = elec->pev->origin.z;
+	UTIL_SetOrigin(elec, next);
+	elec->pev->velocity.x = dir.x * 70;
+	elec->pev->velocity.y = dir.y * 70;
+	elec->pev->angles.y = UTIL_VecToYaw(dir);
 }
 
 static const char *command_item(int index)
@@ -1055,9 +1169,33 @@ int Efw_ClientCommand(edict_t *pent)
 	else if (!strcmp(cmd, "efw_changelevel") && CMD_ARGC() > 1)
 		change_map(CMD_ARGV(1));
 	else if (!strcmp(cmd, "efw_diary")) {
-		if (!g_ndiary) ClientPrint(player->pev, HUD_PRINTTALK, "The diary is empty.\n");
-		for (int i = 0; i < g_ndiary; i++)
-			ClientPrint(player->pev, HUD_PRINTTALK, UTIL_VarArgs("Diary %d\n", g_diary[i]));
+		// Toggle slot 5. efw_diary_next / efw_diary_prev force it open and
+		// walk the page index, wrapping past the sentinel at index 0.
+		g_diaryOpen = !g_diaryOpen;
+		send_panel(player);
+	} else if (!strcmp(cmd, "efw_diary_next")) {
+		g_diaryOpen = 1;
+		if (g_ndiary > 1) {
+			g_diaryIndex++;
+			if (g_diaryIndex >= g_ndiary) g_diaryIndex = 1;
+		}
+		send_panel(player);
+	} else if (!strcmp(cmd, "efw_diary_prev")) {
+		g_diaryOpen = 1;
+		if (g_ndiary > 1) {
+			g_diaryIndex--;
+			if (g_diaryIndex <= 0) g_diaryIndex = g_ndiary - 1;
+		}
+		send_panel(player);
+	} else if (!strcmp(cmd, "efw_pause")) {
+		int on = CMD_ARGC() > 1 && CMD_ARGV(1)[0] == '1';
+		if (on) player->pev->flags |= FL_FROZEN;
+		else if (!g_ending) player->pev->flags &= ~FL_FROZEN;
+	} else if (!strcmp(cmd, "efw_set_state") && CMD_ARGC() > 1) {
+		int on = CMD_ARGC() > 2 && CMD_ARGV(2)[0] == '1';
+		set_topic(CMD_ARGV(1), on);
+	} else if (!strcmp(cmd, "efw_spider")) {
+		try_interact(player);
 	}
 	return 1;
 }
@@ -1073,6 +1211,8 @@ void Efw_StartFrame()
 	}
 	CBasePlayer *player = live_player();
 	if (!player || g_ending) return;
+	seed_diary();
+	drive_electrician();
 
 	if (!g_gaveTag && g_level == 1) {
 		g_gaveTag = 1;

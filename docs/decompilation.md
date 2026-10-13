@@ -145,6 +145,10 @@ Giving the mobile phone to Gholan while `GotHintAboutHiding` is on (`0x100c5240`
 
 `efw_Talk` searches entities named by the argument and keeps the closest one inside `10000000` units (`0x4b189680` stored as a float immediate). The earlier 220-unit cancel is not in this DLL.
 
+`efw_diary` toggles the open flag at state slot 5 (`FUN_100c81a0` / `FUN_100c81b0` on `DAT_10134950`). `efw_diary_next` and `efw_diary_prev` force that flag on and walk slot 0, the page index. The index wraps to 1, and a previous step that lands on 0 jumps to `count - 1`, so the sentinel stored at index 0 is never shown. `FUN_100c6780` seeds diary ids 0 and 1, then ids 2 through 10 on chapters 1 and 2, and sets the index to 1. `FUN_100c6890` appends an id. The client draws `sprites/efw_diary_%02d.spr` for the id at the current index. `efw_pause 1` freezes the player (`FUN_100c7510` writes movetype 0). `efw_set_state` writes a topic flag (`FUN_100c3500`). `efw_spider`, bound to mouse 1, opens the interaction in front of the player when `FUN_100c7820` says something is in range, then shows menu byte `0x48`.
+
+The electrician’s `path_corner` loop is `efw_electrician_path_1` through `efw_electrician_path_11`. His spawn is about 110 units from the pliers marker, inside the 256-unit sight test, and nothing in the map triggers his targetname. `StartMonster` starts that patrol and then waits for a trigger when `targetname` is set. The browser keeps the patrol: a monster that already has a path does not switch to `SCHED_WAIT_TRIGGER`, and the server also walks the corners so the take can succeed once he is far enough away. His model in the DLL spawn override is `models/tradesman.mdl`.
+
 ## Unknowns
 
 - The generated flex parser was not decompiled production by production. The line shape above is what the shipped scripts and the loader strings support.
@@ -152,6 +156,8 @@ Giving the mobile phone to Gholan while `GotHintAboutHiding` is on (`0x100c5240`
 - The client format walker (`0x10044f70`) was decompiled. It still is not what the browser HUD runs. The browser keeps the port’s `EFWShow` panel.
 - Ghidra did not create a function at the server command dispatcher (`0x1001a920`). That body was read from the bytes. The commands above are the ones whose branches were lifted.
 - The hearing flag at monster `+0x2e4` has no writer in the decompiled mod range, so the browser guard uses the visibility test only.
+- `efw_ShowMenu` and `efw_HelpScreen` send menu bytes. The browser still prints the failed-check line and changes level on a successful hide, instead of the storyboard sprite those bytes open.
+- `efw_Pickup` calls a virtual on a named entity. The shipped maps do not spawn world items, so the pliers, bin, cage, and tag board are the use targets.
 - Menu bytes `0x3c`, `0x40`, `0x41`, `0x42`, and `0x44` show client story panels. The server DLL has no caption for them. The browser prints a line that names the failed check.
 
 ## Browser engine
@@ -160,7 +166,7 @@ The playable page runs [Xash3D FWGS](https://github.com/FWGS/xash3d-fwgs) from t
 
 `engine/efw/efw_game.cpp` is a structured port of the recovered grammar and the hope formula. It is not Ghidra’s C compiled as-is. The client reads one `EFWShow` layout written by that port (kind byte, hope byte, line count, strings). That layout is the browser HUD. It is not the slot protocol observed in `client.dll`.
 
-Hope starts at 80, and the decay step is `gpGlobals->frametime` clamped to `[0, 0.2]`. A person named `Detainee` does not get the talk prompt. Other refugees and barneys are eligible inside 123 units. Stashing the pliers adds 10 hope when the electrician does not see the player. The electrician sees the player inside 256 units, or inside a 35 degree cone of his facing. That refusal subtracts 2 hope on the bin and only refuses the take on the pliers marker. `efw_GetPackage` gives the washing powder and the phone and adds 10 hope. Diary lines do not add hope.
+Hope starts at 80, and the decay step is `gpGlobals->frametime` clamped to `[0, 0.2]`. A person named `Detainee` does not get the talk prompt. Other refugees and barneys are eligible inside 123 units. Standing on a marker or next to someone shows an `E:` line. `E` and mouse 1 (`efw_spider`) both try that interaction. Stashing the pliers adds 10 hope when the electrician does not see the player. The electrician sees the player inside 256 units, or inside a 35 degree cone of his facing. He walks `efw_electrician_path_1` and wears `models/tradesman.mdl`, so the pliers can be taken once that path carries him outside 256 units. The refusal subtracts 2 hope on the bin and only refuses the take on the pliers marker. `efw_GetPackage` gives the washing powder and the phone and adds 10 hope. Diary lines do not add hope. `i` toggles the diary sprite (`sprites/efw_diary_%02d.spr`). `[` and `]` step the pages, skipping the sentinel at index 0.
 
 Giving the phone to Gholan, after `GotHintAboutHiding` is on, runs his bargain: the phone is taken, hope rises by 10, and diary 13 is recorded. Giving the washing powder to Mouhtaz takes the powder, gives the lever, adds 15 hope, and records diary 17. The cage door opens for the lever and breaks the branch. Hiding on level 1 requires the bin stash, Gholan’s agreement, and the lever, then adds 15 hope and loads level 2. Hiding on level 2 requires the pliers, adds 15 hope, and loads level 3. A level 2 guard catches the player inside 512 units and a 60 degree cone when the trace is clear, unless the player is inside `efw_hiding_place`.
 

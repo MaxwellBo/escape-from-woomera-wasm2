@@ -167,27 +167,50 @@ index ffa101f..04c77af 100644
  	root->setBgColor( 128, 128, 0, 0 );
  	// root->setNonPainted( false );
 diff --git a/dlls/barney.cpp b/dlls/barney.cpp
-index c541ecd..b4fa361 100644
+index c541ecd..fd5dfe2 100644
 --- a/dlls/barney.cpp
 +++ b/dlls/barney.cpp
-@@ -420,7 +420,7 @@ void CBarney::Spawn()
+@@ -419,8 +419,10 @@ void CBarney::Spawn()
+ 
  	if (pev->model)
  		SET_MODEL(ENT(pev), STRING(pev->model)); //LRC
++	else if (!FStringNull(pev->targetname) && !strcmp(STRING(pev->targetname), "efw_electrician"))
++		SET_MODEL(ENT(pev), "models/tradesman.mdl");
  	else
 -		SET_MODEL( ENT( pev ), "models/barney.mdl" );
 +		SET_MODEL( ENT( pev ), "models/Security.mdl" );
  	UTIL_SetSize( pev, VEC_HUMAN_HULL_MIN, VEC_HUMAN_HULL_MAX );
  
  	pev->solid = SOLID_SLIDEBOX;
-@@ -450,7 +450,7 @@ void CBarney::Precache()
+@@ -449,8 +451,10 @@ void CBarney::Precache()
+ {
  	if (pev->model)
  		PRECACHE_MODEL(STRING(pev->model)); //LRC
++	else if (!FStringNull(pev->targetname) && !strcmp(STRING(pev->targetname), "efw_electrician"))
++		PRECACHE_MODEL("models/tradesman.mdl");
  	else
 -		PRECACHE_MODEL( "models/barney.mdl" );
 +		PRECACHE_MODEL( "models/Security.mdl" );
  
  	PRECACHE_SOUND( "barney/ba_attack1.wav" );
  	PRECACHE_SOUND( "barney/ba_attack2.wav" );
+diff --git a/dlls/monsters.cpp b/dlls/monsters.cpp
+index 4107a12..507c286 100644
+--- a/dlls/monsters.cpp
++++ b/dlls/monsters.cpp
+@@ -2133,8 +2133,10 @@ void CBaseMonster::StartMonster( void )
+ 	SetThink( &CBaseMonster::CallMonsterThink );
+ 	AbsoluteNextThink( m_fNextThink + RANDOM_FLOAT( 0.1f, 0.4f ) ); // spread think times.
+ 
+-	// Vit_amiN: fixed -- now it doesn't touch any scripted_sequence target
+-	if( !FStringNull( pev->targetname ) && !m_pCine )// wait until triggered
++	// Vit_amiN: fixed -- now it doesn't touch any scripted_sequence target.
++	// A monster that already has a path (the electrician) keeps walking it.
++	// Waiting for a trigger here leaves him inside the pliers' sight radius.
++	if( !FStringNull( pev->targetname ) && !m_pCine && !m_pGoalEnt )// wait until triggered
+ 	{
+ 		SetState( MONSTERSTATE_IDLE );
+ 		// UNDONE: Some scripted sequence monsters don't have an idle?
 diff --git a/dlls/client.cpp b/dlls/client.cpp
 index c51b1dd..4f056f6 100644
 --- a/dlls/client.cpp
