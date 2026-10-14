@@ -92,8 +92,12 @@ static int g_diaryOpen = 0;
 static int g_diaryReady = 0;
 static float g_hope = HOPE_START;
 static int g_loaded = 0;
-static int g_gaveTag = 0;
+static int g_itemsGiven = 0;
 static int g_tagOnBoard = 0;
+static edict_t *g_tagEnt = NULL;
+static float g_tagReady = 0;
+static char g_mapName[64];
+static int g_diaryRead[32];
 static int g_pliersInBin = 0;
 static int g_binFails = 0;
 static int g_ending = 0;
@@ -496,19 +500,27 @@ static int electrician_sees(CBasePlayer *player)
 	return 0;
 }
 
-// gpGlobals->mapname stays on the previous map across CHANGE_LEVEL in this
-// build, so the chapter comes from who actually spawned.
+// FUN_100c5b80 compares the map name. level3 is chapter 2, level2 is chapter 1,
+// anything else that has loaded is chapter 0. This build leaves
+// gpGlobals->mapname on the previous map after CHANGE_LEVEL, so the name
+// passed to change_map is the one the comparison uses.
+static int level_from_map(const char *name)
+{
+	if (!name || !name[0]) return 0;
+	if (!strcmp(name, "efw_prototype_level3")) return 3;
+	if (!strcmp(name, "efw_prototype_level2")) return 2;
+	if (!strcmp(name, "efw_prototype_level1")) return 1;
+	return 0;
+}
+
 static int detect_level()
 {
-	if (UTIL_FindEntityByClassname(NULL, "monster_patrol_guard")) return 2;
-	if (UTIL_FindEntityByTargetname(NULL, "efw_electrician")) return 1;
-	if (UTIL_FindEntityByTargetname(NULL, "efw_PliersMarker")) return 1;
-	if (UTIL_FindEntityByClassname(NULL, "monster_refugee")) return 3;
-	const char *name = STRING(gpGlobals->mapname);
-	if (name && strstr(name, "level2")) return 2;
-	if (name && strstr(name, "level3")) return 3;
-	if (name && strstr(name, "level1")) return 1;
-	return 0;
+	if (!g_mapName[0]) {
+		const char *engine = STRING(gpGlobals->mapname);
+		if (level_from_map(engine))
+			copy_cap(g_mapName, sizeof(g_mapName), engine);
+	}
+	return level_from_map(g_mapName);
 }
 
 static void send_panel(CBasePlayer *player);
@@ -538,6 +550,10 @@ static void change_map(const char *map)
 	g_caught = 0;
 	g_annReady = 0;
 	g_paused = 0;
+	if (map && map[0]) {
+		copy_cap(g_mapName, sizeof(g_mapName), map);
+		gpGlobals->mapname = ALLOC_STRING(map);
+	}
 	CHANGE_LEVEL((char *)map, NULL);
 }
 
@@ -591,6 +607,8 @@ static void apply_commands(CBasePlayer *player, const char *commands)
 			g_talking = 0;
 		} else if (!strcmp(name, "ServerCommand")) {
 			// FUN_100bfbf0. The package is the powder and the phone, then +10.
+			// efw_TriggerMailPickupMessage is named in the scripts and is not
+			// a string in the server DLL, so that command does nothing.
 			if (!strcmp(arg, "efw_GetPackage") && player) {
 				if (!has_weapon(player, "weapon_efw_WashingPowder"))
 					player->GiveNamedItem("weapon_efw_WashingPowder");
@@ -686,9 +704,136 @@ static void write_short(const char *s)
 	WRITE_STRING(buf);
 }
 
+struct CtxBtn {
+	char label[72];
+	char command[96];
+	char icon[64];
+	Vector at;
+};
+
+static const struct {
+	int id;
+	const char *cls;
+	const char *name;
+	const char *icon;
+} g_offers[] = {
+	{0x10, "weapon_efw_Pliers", "pliers", "sprites/efw_item_pliers.spr"},
+	{0x11, "weapon_efw_Lever", "lever", "sprites/efw_item_lever.spr"},
+	{0x12, "weapon_efw_Branch", "branch", "sprites/efw_item_branch.spr"},
+	{0x13, "weapon_efw_MobilePhone", "mobile phone", "sprites/efw_give_icon.spr"},
+	{0x14, "weapon_efw_IDTag", "ID tag", "sprites/efw_item_idtag.spr"},
+	{0x15, "weapon_efw_RedPhoneCard", "red phone card", "sprites/efw_item_phonecard.spr"},
+	{0x16, "weapon_efw_GreenPhoneCard", "green phone card", "sprites/efw_item_phonecard.spr"},
+	{0x17, "weapon_efw_BluePhoneCard", "blue phone card", "sprites/efw_item_phonecard.spr"},
+	{0x18, "weapon_efw_WashingPowder", "washing powder", "sprites/efw_item_washingpowder.spr"},
+};
+
+static void push_ctx(CtxBtn *btns, int *n, const char *label, const char *command, const char *icon, const Vector &at)
+{
+	if (*n >= 8 || !label || !command) return;
+	CtxBtn *b = &btns[*n];
+	copy_cap(b->label, sizeof(b->label), label);
+	copy_cap(b->command, sizeof(b->command), command);
+	copy_cap(b->icon, sizeof(b->icon), icon ? icon : "");
+	b->at = at;
+	(*n)++;
+}
+
+// FUN_100c7830 fills at most three records. FUN_10044f70 turns each one into
+// the talk, give, pickup, and marker buttons, and the client sends the
+// command strings stored on those buttons.
+static void send_context(CBasePlayer *player)
+{
+	if (!player || !g_msgsReady) return;
+	CtxBtn btns[8];
+	int n = 0;
+	if (!g_board && !g_diaryOpen) {
+		CBaseEntity *hit[3];
+		int nhit = 0;
+		CBaseEntity *ent = NULL;
+		while ((ent = UTIL_FindEntityInSphere(ent, player->pev->origin, TALK_RADIUS)) != NULL && nhit < 3) {
+			const char *cls = STRING(ent->pev->classname);
+			int keep = 0;
+			if (!strcmp(cls, "monster_refugee") || !strcmp(cls, "monster_barney")) {
+				const char *who = STRING(ent->pev->targetname);
+				if (who && who[0] && strcmp(who, "Detainee")) keep = 1;
+			} else if (!strcmp(cls, "efw_Marker") || !strcmp(cls, "func_door_rotating")) {
+				keep = 1;
+			} else if (!strncmp(cls, "weapon_efw", 10) && !ent->pev->aiment) {
+				keep = 1;
+			}
+			if (!keep) continue;
+			hit[nhit++] = ent;
+		}
+		for (int i = 0; i < nhit && n < 8; i++) {
+			ent = hit[i];
+			const char *cls = STRING(ent->pev->classname);
+			const char *who = STRING(ent->pev->targetname);
+			Vector at = ent->pev->origin;
+			if (!strcmp(cls, "monster_refugee") || !strcmp(cls, "monster_barney")) {
+				at.z += 64;
+				char label[72];
+				char command[96];
+				snprintf(label, sizeof(label), "Talk to %s", who);
+				snprintf(command, sizeof(command), "efw_Talk %s", who);
+				push_ctx(btns, &n, label, command, "sprites/efw_speech_bubble.spr", at);
+				for (int k = 0; k < 9 && n < 8; k++) {
+					if (!has_weapon(player, g_offers[k].cls)) continue;
+					snprintf(label, sizeof(label), "Give %s to %s", g_offers[k].name, who);
+					snprintf(command, sizeof(command), "efw_Give %d %s", g_offers[k].id, who);
+					push_ctx(btns, &n, label, command, g_offers[k].icon, at);
+				}
+			} else if (!strcmp(who, "efw_IDTag_Position")) {
+				for (int k = 0; k < 9; k++) if (g_offers[k].id == 0x14 && has_weapon(player, g_offers[k].cls))
+					push_ctx(btns, &n, "Place ID tag on fence", "efw_UseWithMarker 20 efw_IDTag_Position", g_offers[k].icon, at);
+			} else if (!strcmp(who, "efw_kitchen_bin")) {
+				for (int k = 0; k < 9; k++) if (g_offers[k].id == 0x10 && has_weapon(player, g_offers[k].cls))
+					push_ctx(btns, &n, "Hide pliers in bin", "efw_UseWithMarker 16 efw_kitchen_bin", g_offers[k].icon, at);
+			} else if (!strcmp(who, "efw_hiding_place")) {
+				push_ctx(btns, &n, "Hide under the building", "efw_HideUnderBuilding", "sprites/efw_hide_icon.spr", at);
+			} else if (!strcmp(who, "efw_cage_door")) {
+				for (int k = 0; k < 9; k++) if (g_offers[k].id == 0x11 && has_weapon(player, g_offers[k].cls))
+					push_ctx(btns, &n, "Force open cage door with lever", "efw_UseWithMarker 17 efw_cage_door", g_offers[k].icon, at);
+			} else if (!strcmp(who, "efw_PliersMarker")) {
+				if (!has_weapon(player, "weapon_efw_Pliers"))
+					push_ctx(btns, &n, "Take pliers", "efw_PickupPliers", "sprites/efw_item_pliers.spr", at);
+			} else if (!strncmp(cls, "weapon_efw", 10)) {
+				int id = -1;
+				const char *icon = "sprites/efw_give_icon.spr";
+				const char *name = cls;
+				for (int k = 0; k < 9; k++) if (!strcmp(cls, g_offers[k].cls)) {
+					id = g_offers[k].id;
+					icon = g_offers[k].icon;
+					name = g_offers[k].name;
+				}
+				if (id >= 0) {
+					char label[72];
+					char command[96];
+					snprintf(label, sizeof(label), "Pick up %s", name);
+					snprintf(command, sizeof(command), "efw_Pickup %d", id);
+					push_ctx(btns, &n, label, command, icon, at);
+				}
+			}
+		}
+	}
+	MESSAGE_BEGIN(MSG_ONE, gmsgEfw, NULL, player->pev);
+	WRITE_BYTE(5);
+	WRITE_BYTE(n);
+	for (int i = 0; i < n; i++) {
+		WRITE_STRING(btns[i].label);
+		WRITE_STRING(btns[i].command);
+		WRITE_STRING(btns[i].icon);
+		WRITE_COORD(btns[i].at.x);
+		WRITE_COORD(btns[i].at.y);
+		WRITE_COORD(btns[i].at.z);
+	}
+	MESSAGE_END();
+}
+
 static void send_panel(CBasePlayer *player)
 {
 	if (!player || !g_msgsReady) return;
+	send_context(player);
 	int hopeByte = g_hope > 0 ? (int)(g_hope + 0.5f) : 0;
 	if (g_board) {
 		const char *sprite = menu_sprite(g_board);
@@ -707,10 +852,12 @@ static void send_panel(CBasePlayer *player)
 		if (g_diaryIndex > 0 && g_diaryIndex < g_ndiary) id = g_diary[g_diaryIndex];
 		if (id < 0) id = 0;
 		if (id > 255) id = 255;
+		int read = (id >= 0 && id < 32 && g_diaryRead[id]) ? 1 : 0;
 		MESSAGE_BEGIN(MSG_ONE, gmsgEfw, NULL, player->pev);
 		WRITE_BYTE(3);
 		WRITE_BYTE(hopeByte);
 		WRITE_BYTE(id);
+		WRITE_BYTE(read);
 		MESSAGE_END();
 		return;
 	}
@@ -1121,6 +1268,57 @@ static int try_cage(CBasePlayer *player)
 	return 0;
 }
 
+// FUN_100c2a20. The weapon is moved to the marker centre, the topic is set,
+// and the compound guard speaks. FUN_100c29f0 picks it up again after 500ms.
+static void place_id_tag(CBasePlayer *player, int fromPlayer)
+{
+	CBaseEntity *marker = UTIL_FindEntityByTargetname(NULL, "efw_IDTag_Position");
+	if (!marker) return;
+	if (fromPlayer) {
+		if (!player || !has_weapon(player, "weapon_efw_IDTag")) return;
+		take_weapon(player, "weapon_efw_IDTag");
+	}
+	if (!g_tagEnt || FNullEnt(g_tagEnt)) {
+		g_tagEnt = CREATE_NAMED_ENTITY(MAKE_STRING("weapon_efw_IDTag"));
+		if (FNullEnt(g_tagEnt)) return;
+		DispatchSpawn(g_tagEnt);
+	}
+	CBaseEntity *item = CBaseEntity::Instance(g_tagEnt);
+	Vector center = (marker->pev->absmin + marker->pev->absmax) * 0.5f;
+	if (item) {
+		item->pev->angles = g_vecZero;
+		item->pev->velocity = g_vecZero;
+		item->pev->movetype = MOVETYPE_NONE;
+		item->pev->solid = SOLID_NOT;
+		item->pev->owner = 0;
+		item->pev->aiment = 0;
+		item->pev->effects |= EF_NODRAW;
+		UTIL_SetOrigin(item, center);
+	}
+	g_tagOnBoard = 1;
+	g_tagReady = gpGlobals->time + 0.5f;
+	set_topic("Player'sIDTagOnFence", 1);
+	ALERT(at_console, "ID Tag has been placed on the wall.\n");
+	if (player) show_caption(player, "Okay RAR-124, you can pass.");
+}
+
+static int take_id_tag(CBasePlayer *player)
+{
+	if (!g_tagOnBoard || !player) return 0;
+	if (gpGlobals->time < g_tagReady) return 1;
+	if (!has_weapon(player, "weapon_efw_IDTag"))
+		player->GiveNamedItem("weapon_efw_IDTag");
+	if (g_tagEnt && !FNullEnt(g_tagEnt)) {
+		CBaseEntity *item = CBaseEntity::Instance(g_tagEnt);
+		if (item) UTIL_Remove(item);
+	}
+	g_tagEnt = NULL;
+	g_tagOnBoard = 0;
+	set_topic("Player'sIDTagOnFence", 0);
+	show_caption(player, "You just picked up the ID Tag.");
+	return 1;
+}
+
 static int try_marker(CBasePlayer *player)
 {
 	CBaseEntity *ent = NULL;
@@ -1129,21 +1327,11 @@ static int try_marker(CBasePlayer *player)
 		const char *name = STRING(ent->pev->targetname);
 		if (!strcmp(name, "efw_IDTag_Position")) {
 			if (has_weapon(player, "weapon_efw_IDTag")) {
-				take_weapon(player, "weapon_efw_IDTag");
-				g_tagOnBoard = 1;
-				set_topic("Player'sIDTagOnFence", 1);
-				ClientPrint(player->pev, HUD_PRINTCENTER, "You leave the ID tag on the board.");
+				place_id_tag(player, 1);
 				return 1;
 			}
-			if (g_tagOnBoard) {
-				player->GiveNamedItem("weapon_efw_IDTag");
-				g_tagOnBoard = 0;
-				set_topic("Player'sIDTagOnFence", 0);
-				ClientPrint(player->pev, HUD_PRINTCENTER, "You take your ID tag back.");
-				return 1;
-			}
-			ClientPrint(player->pev, HUD_PRINTCENTER, "You have no ID tag to leave here.");
-			return 1;
+			if (g_tagOnBoard) return take_id_tag(player);
+			return 0;
 		}
 		if (!strcmp(name, "efw_PliersMarker"))
 			return try_pickup_pliers(player);
@@ -1289,21 +1477,29 @@ static GuardSpot *spot_for(CBaseMonster *guard)
 	return freeSlot;
 }
 
-static void step_toward(CBaseEntity *ent, const Vector &dest, float speed)
+// Same step Spirit's MoveExecute takes: the current sequence's ground speed,
+// along the facing, through UTIL_MoveToOrigin.
+static void step_toward(CBaseMonster *ent, const Vector &dest, Activity act)
 {
+	if (!ent) return;
+	if (ent->m_Activity != act)
+		ent->SetActivity(act);
+	ent->pev->framerate = 1;
+	ent->StudioFrameAdvance();
 	Vector delta = dest - ent->pev->origin;
 	delta.z = 0;
 	float dist = delta.Length();
 	if (dist < 16) {
-		ent->pev->velocity.x = 0;
-		ent->pev->velocity.y = 0;
+		ent->pev->velocity = g_vecZero;
 		return;
 	}
+	float step = ent->m_flGroundSpeed * 0.1f;
+	if (step > dist) step = dist;
 	Vector dir = delta * (1.0f / dist);
-	ent->pev->velocity.x = dir.x * speed;
-	ent->pev->velocity.y = dir.y * speed;
 	ent->pev->angles.y = UTIL_VecToYaw(dir);
 	ent->pev->ideal_yaw = ent->pev->angles.y;
+	if (step > 0)
+		UTIL_MoveToOrigin(ent->edict(), dest, step, MOVE_NORMAL);
 }
 
 // FUN_100c5480. The halt line puts every patrol guard into the chase state.
@@ -1347,7 +1543,7 @@ int Efw_GuardSpot(CBaseMonster *guard)
 		if (!sees || guard_hears(guard)) {
 			spot->state = 0;
 		} else if (now - spot->tNotice >= GUARD_NOTICE) {
-			ClientPrint(player->pev, HUD_PRINTCENTER, "Hey, what was that? I thought I saw something.");
+			show_caption(player, "Hey, what was that? I thought I saw something.");
 			spot->pos = player->pev->origin;
 			spot->tNotice = now;
 			spot->tMark = now;
@@ -1355,11 +1551,11 @@ int Efw_GuardSpot(CBaseMonster *guard)
 		}
 	} else if (spot->state == 2) {
 		if (sees || guard_hears(guard)) {
-			ClientPrint(player->pev, HUD_PRINTCENTER, "Hmmm?");
+			show_caption(player, "Hmmm?");
 			spot->state = 3;
 			spot->tMark = now;
 		} else if (now - spot->tNotice >= GUARD_LOST && now - spot->tMark >= GUARD_REACT) {
-			ClientPrint(player->pev, HUD_PRINTCENTER, "Ah, guess it was nothing...");
+			show_caption(player, "Ah, guess it was nothing...");
 			spot->state = 0;
 		}
 	} else if (spot->state == 3) {
@@ -1369,7 +1565,7 @@ int Efw_GuardSpot(CBaseMonster *guard)
 		} else {
 			spot->pos = player->pev->origin;
 			if (now - spot->tMark >= GUARD_REACT || guard_dist(guard, player) < GUARD_CLOSE) {
-				ClientPrint(player->pev, HUD_PRINTCENTER, "Halt! Put your hands up, and get down on the ground!");
+				show_caption(player, "Halt! Put your hands up, and get down on the ground!");
 				spot->tMark = now;
 				alert_guards(player);
 			}
@@ -1385,7 +1581,7 @@ int Efw_GuardSpot(CBaseMonster *guard)
 	}
 
 	if (spot->state >= 2) {
-		step_toward(guard, spot->pos, spot->state == 4 ? 160.0f : 90.0f);
+		step_toward(guard, spot->pos, spot->state == 4 ? ACT_RUN : ACT_WALK);
 		return 1;
 	}
 	return 0;
@@ -1425,44 +1621,6 @@ int Efw_TryUse(CBasePlayer *player)
 	return try_interact(player);
 }
 
-// The map path walks him out of the 256-unit sight radius. Nothing in the
-// map triggers efw_electrician, so a wait-for-trigger schedule leaves him
-// on top of the pliers. This drives path_corner targets at a walk.
-static char g_elecCorner[32];
-
-static void drive_electrician()
-{
-	CBaseEntity *elec = UTIL_FindEntityByTargetname(NULL, "efw_electrician");
-	if (!elec) return;
-	elec->pev->nextthink = 0;
-	if (!g_elecCorner[0]) {
-		const char *start = STRING(elec->pev->target);
-		if (!start || !start[0]) start = "efw_electrician_path_1";
-		copy_cap(g_elecCorner, 32, start);
-	}
-	CBaseEntity *corner = UTIL_FindEntityByTargetname(NULL, g_elecCorner);
-	if (!corner) return;
-	Vector delta = corner->pev->origin - elec->pev->origin;
-	delta.z = 0;
-	float dist = delta.Length();
-	if (dist < 32) {
-		const char *next = STRING(corner->pev->target);
-		if (next && next[0]) copy_cap(g_elecCorner, 32, next);
-		elec->pev->velocity.x = 0;
-		elec->pev->velocity.y = 0;
-		return;
-	}
-	Vector dir = delta * (1.0f / dist);
-	float step = 70.0f * gpGlobals->frametime;
-	if (step > dist) step = dist;
-	Vector next = elec->pev->origin + dir * step;
-	next.z = elec->pev->origin.z;
-	UTIL_SetOrigin(elec, next);
-	elec->pev->velocity.x = dir.x * 70;
-	elec->pev->velocity.y = dir.y * 70;
-	elec->pev->angles.y = UTIL_VecToYaw(dir);
-}
-
 static const char *command_item(int index)
 {
 	const char *arg = CMD_ARGV(index);
@@ -1498,6 +1656,7 @@ static void give_item(CBasePlayer *player, const char *cls, const char *who)
 	if (!strcmp(cls, "weapon_efw_Pliers")) {
 		if (!strcmp(who, "Amir")) {
 			take_weapon(player, cls);
+			g_diaryRead[2] = 1;
 			ClientPrint(player->pev, HUD_PRINTCENTER, "Well done! Your bravery and cleverness have helped bring us all one step closer to freedom!");
 			present_menu(player, 0x4c);
 			return;
@@ -1536,6 +1695,8 @@ static void use_with_marker(CBasePlayer *player, const char *cls, const char *ma
 	}
 	if (!strcmp(marker, "efw_kitchen_bin") && !strcmp(cls, "weapon_efw_Pliers"))
 		try_stash_bin(player);
+	if (!strcmp(marker, "efw_IDTag_Position") && !strcmp(cls, "weapon_efw_IDTag"))
+		place_id_tag(player, 1);
 }
 
 int Efw_ClientCommand(edict_t *pent)
@@ -1557,9 +1718,13 @@ int Efw_ClientCommand(edict_t *pent)
 	else if (!strcmp(cmd, "efw_PickupPliers"))
 		try_pickup_pliers(player);
 	else if (!strcmp(cmd, "efw_Pickup") && CMD_ARGC() > 1) {
-		// 0x1001b5d3. argv1 is a classname. aiment must be clear, then the
-		// item virtual at +0x114 runs (AddToPlayer on weapon_efw_*).
-		CBaseEntity *ent = UTIL_FindEntityByClassname(NULL, CMD_ARGV(1));
+		// 0x1001b5d3 searches by classname. The client template is
+		// "efw_Pickup %u", and %u is the DLL item id, so a number is mapped
+		// through the item table before that search.
+		const char *which = CMD_ARGV(1);
+		if (which[0] >= '0' && which[0] <= '9')
+			which = class_from_dll_item(atoi(which));
+		CBaseEntity *ent = which ? UTIL_FindEntityByClassname(NULL, which) : NULL;
 		if (ent && !ent->pev->aiment && !strncmp(STRING(ent->pev->classname), "weapon_", 7))
 			((CBasePlayerItem *)ent)->AddToPlayer(player);
 	}
@@ -1647,6 +1812,10 @@ void Efw_StartFrame()
 		g_paused = 0;
 		reset_spots();
 		g_freshMap = 1;
+		g_itemsGiven = 0;
+		g_tagEnt = NULL;
+		g_tagOnBoard = 0;
+		memset(g_diaryRead, 0, sizeof(g_diaryRead));
 	} else if (detected) {
 		g_level = detected;
 	}
@@ -1667,13 +1836,26 @@ void Efw_StartFrame()
 		present_menu(player, 0x49);
 	}
 	seed_diary();
-	drive_electrician();
 	tick_announcer(player);
 
-	if (!g_gaveTag && g_level == 1) {
-		g_gaveTag = 1;
-		if (!g_tagOnBoard && !has_weapon(player, "weapon_efw_IDTag"))
-			player->GiveNamedItem("weapon_efw_IDTag");
+	// 0x1007f0cb calls FUN_100c27f0, then 0x1007f0d1 calls FUN_100c3020.
+	// Level 1 gives the ID tag and the red phone card. Level 2 gives the
+	// lever. Level 3 places an ID tag on the board and gives the pliers.
+	if (!g_itemsGiven) {
+		g_itemsGiven = 1;
+		if (g_level == 1) {
+			if (!has_weapon(player, "weapon_efw_IDTag"))
+				player->GiveNamedItem("weapon_efw_IDTag");
+			if (!has_weapon(player, "weapon_efw_RedPhoneCard"))
+				player->GiveNamedItem("weapon_efw_RedPhoneCard");
+		} else if (g_level == 2) {
+			if (!has_weapon(player, "weapon_efw_Lever"))
+				player->GiveNamedItem("weapon_efw_Lever");
+		} else if (g_level == 3) {
+			place_id_tag(player, 0);
+			if (!has_weapon(player, "weapon_efw_Pliers"))
+				player->GiveNamedItem("weapon_efw_Pliers");
+		}
 	}
 
 	float step = gpGlobals->frametime;

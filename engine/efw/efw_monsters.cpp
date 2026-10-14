@@ -61,6 +61,7 @@ public:
 	void Precache();
 	int Classify() { return CLASS_HUMAN_MILITARY; }
 	void PatrolThink();
+	void MoveAlong(const Vector &dest, Activity act);
 	edict_t *m_path;
 };
 
@@ -88,6 +89,30 @@ void CPatrolGuard::Spawn()
 	pev->nextthink = gpGlobals->time + 0.2f;
 }
 
+// Spirit movement. MoveExecute steps m_flGroundSpeed along the facing, which
+// is the walk or run sequence rate, through UTIL_MoveToOrigin.
+void CPatrolGuard::MoveAlong(const Vector &dest, Activity act)
+{
+	if (m_Activity != act)
+		SetActivity(act);
+	pev->framerate = 1;
+	StudioFrameAdvance();
+	Vector delta = dest - pev->origin;
+	delta.z = 0;
+	float dist = delta.Length();
+	if (dist < 28) {
+		pev->velocity = g_vecZero;
+		return;
+	}
+	float step = m_flGroundSpeed * 0.1f;
+	if (step > dist) step = dist;
+	Vector dir = delta * (1.0f / dist);
+	pev->angles.y = UTIL_VecToYaw(dir);
+	pev->ideal_yaw = pev->angles.y;
+	if (step > 0)
+		UTIL_MoveToOrigin(ENT(pev), dest, step, MOVE_NORMAL);
+}
+
 void CPatrolGuard::PatrolThink()
 {
 	// FUN_100c54e0. A storyboard pause stops the patrol and pins the guard.
@@ -97,7 +122,6 @@ void CPatrolGuard::PatrolThink()
 		pev->velocity = g_vecZero;
 		return;
 	}
-	pev->framerate = 1;
 	pev->movetype = MOVETYPE_STEP;
 	pev->nextthink = gpGlobals->time + 0.1f;
 	if (Efw_GuardSpot(this)) return;
@@ -113,11 +137,7 @@ void CPatrolGuard::PatrolThink()
 			m_path = FIND_ENTITY_BY_TARGETNAME(NULL, STRING(m_path->v.target));
 		return;
 	}
-	Vector dir = delta.Normalize();
-	pev->velocity.x = dir.x * 75;
-	pev->velocity.y = dir.y * 75;
-	pev->angles.y = UTIL_VecToYaw(dir);
-	pev->ideal_yaw = pev->angles.y;
+	MoveAlong(dest, ACT_WALK);
 }
 
 class CEfwGuard : public CPatrolGuard
