@@ -1,0 +1,21 @@
+
+undefined4 __cdecl GetEntityAPI2(undefined4 *param_1,int *param_2)
+
+{
+  int iVar1;
+  undefined **ppuVar2;
+  
+                    /* 0x18ae0  283  GetEntityAPI2 */
+  if ((param_1 != (undefined4 *)0x0) && (*param_2 == 0x8c)) {
+    ppuVar2 = &PTR_FUN_10104d28;
+    for (iVar1 = 0x32; iVar1 != 0; iVar1 = iVar1 + -1) {
+      *param_1 = *ppuVar2;
+      ppuVar2 = ppuVar2 + 1;
+      param_1 = param_1 + 1;
+    }
+    return 1;
+  }
+  *param_2 = 0x8c;
+  return 0;
+}
+

@@ -1,0 +1,23 @@
+
+Q:<GREET>: Hello.
+A: I don't want to talk to you.
+A: Goodbye.
+A: Get out of here.
+A: Go away.
+
+Q<KITCHEN>: I want to know about the kitchens. 
+A: Do I look like an information booth?
+
+Q<WORK>: I want to work in the kitchens.
+A: That’s nothing to do with me.
+
+Q<OFFICE>: I've got to visit the admin office.
+A: Try telling someone who cares.
+
+Q<GOODBYE>: Goodbye
+A:[Goodbye]
+
+UNWANTED_ITEM
+A<FirstTime>: Keep your rubbish to yourself.
+A<!FirstTime>: I don't want your junk.
+

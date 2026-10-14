@@ -1,0 +1,36 @@
+
+Q<GREET FirstTime>: How are you, Mouhtaz?
+A: Not so good. I work here as much as they allow, but all that I earn is spent on long-distance phone calls to my family. I cannot even afford to buy washing powder to clean my filthy clothes! [AddTopic(GREET_MOUHTAZ_SUBSEQUENT) AddDiary (16)]
+
+Q<GREET_MOUHTAZ_SUBSEQUENT>: How are you, Mouhtaz?
+A: I'd be happier if I could afford to wash my clothes.
+
+Q<ESCAPE>: I plan to escape.
+A: But where would you go? Over two hundred people escaped from here once, and made their way into town peacefully. They gathered in the town square and tried to negotiate, but soon all were locked away again, and very little changed for the better.
+
+Q<PLIERS>: I’m looking for a pair of pliers.
+A: The electrician in the next room has a pair. If you are careful, you may be able to get them when he is not looking. [AddTopic(ELECTRICIAN)]
+
+Q<PLIERS_GOT_PLIERS>: Hey, I've got these pliers...
+A: Don't try to leave with them. The guard outside may search you!
+
+Q<ELECTRICIAN>: Tell me about the electrician working here.
+A: He is in the next room.
+
+Q<KITCHEN>: Do you like working here in the kitchen? 
+A: It gives me something to do. I’m responsible for the bins. [AddTopic(BINS)]
+
+Q<HIDING>: Do you know anywhere I could hide?
+A: Well, you're too big to fit in any of the bins. [AddTopic(BINS)]
+
+Q<BINS>: Tell me about the bins.
+A: It's my job to make sure they're taken out into the storage cage outside at the end of each day.
+
+Q<GOODBYE>: Goodbye
+A:[Goodbye]
+
+UNWANTED_ITEM
+A<FirstTime>: I have no need for that.
+A<!FirstTime>: No, you keep it.
+
+

@@ -1,0 +1,11 @@
+
+void __cdecl FUN_10043a70(int param_1,int param_2,int param_3)
+
+{
+  (*DAT_100a501c)(param_2,param_3,0x40,0x40,0x14,0x14,0x14,0xff);
+  FUN_10043af0(param_2,param_3,0x40,0x40,0x32,0x32,0x32,0xff,3);
+  (*DAT_100a5000)(*(undefined4 *)(param_1 + 0xa8),0xff,0xff,0xff);
+  (*DAT_100a5004)(0,param_2 + -0x20,param_3 + -0x20,0);
+  return;
+}
+

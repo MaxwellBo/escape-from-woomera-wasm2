@@ -1,0 +1,43 @@
+
+Q<GREET>: Hello.
+A: Leave me alone.
+
+Q<ESCAPE>: I must escape from this terrible place.
+A: There is no way to escape.
+
+Q<PLIERS>: I’m looking for a pair of pliers.
+A: Pliers? What are you talking about?
+A: I can’t help you with that.
+A: Sorry, I know nothing of this.
+A: Leave me alone!
+
+Q<ELECTRICIAN>: Have you heard anything about an electrician working here?
+A: No, nothing.
+A: No.
+
+Q<KITCHEN>: What can you tell me about the kitchens? 
+A: Kitchens? None of my business.
+A: I can’t help you.
+A: The kitchen? Only way in is if you work there. [AddTopic(WORK) DeleteTopic(KITCHEN) ServerCommand(efw_TriggerMailPickupMessage) AddDiary(4)]
+
+Q<WORK>: How do I get work in the kitchens?
+A: I have no idea.
+
+Q<OFFICE>: I have to go to the office.
+A: Then why are you talking to me?
+
+Q<HIDING>: Do you know anywhere I could hide?
+A: There is nowhere to hide in this accursed place.
+
+Q<IDTAG>: Would you remove my ID tag while I’m in the main compound?
+A: I’d help, but it’s too risky.
+
+Q<GOODBYE>: Goodbye
+A:[Goodbye]
+
+UNWANTED_ITEM
+A<FirstTime>: You keep it.
+A<!FirstTime>: I don't want it.
+
+
+

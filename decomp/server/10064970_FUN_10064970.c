@@ -1,0 +1,25 @@
+
+/* WARNING: Globals starting with '_' overlap smaller symbols at the same address */
+
+void FUN_10064970(void)
+
+{
+  FUN_1003d800();
+  _DAT_10126b68 = 0x41f00000;
+  DAT_10126b18 = 0x41c80000;
+  DAT_10126b1c = 0x41400000;
+  DAT_10126b20 = 0x42200000;
+  DAT_10126b24 = 0x41400000;
+  DAT_10126b28 = 0x42c80000;
+  DAT_10126b2c = 0x41a00000;
+  DAT_10126b30 = 0x41a00000;
+  DAT_10126b38 = 0x42f00000;
+  DAT_10126b44 = 0x41a00000;
+  DAT_10126b40 = 0x41200000;
+  DAT_10126b4c = 0x42c80000;
+  DAT_10126b50 = 0x42f00000;
+  DAT_10126b54 = 0x43160000;
+  DAT_10126b48 = 0x41200000;
+  return;
+}
+

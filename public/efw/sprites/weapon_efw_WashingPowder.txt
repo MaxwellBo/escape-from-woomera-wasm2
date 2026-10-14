@@ -1,0 +1,5 @@
+4
+weapon			320 efw_item_washingpowder	0	0	128	128
+weapon_s		320 efw_item_washingpowder	0	0	128	128
+weapon			640 efw_item_washingpowder	0	0	128	128
+weapon_s		640 efw_item_washingpowder 	0	0	128	128
