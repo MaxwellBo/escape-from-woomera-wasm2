@@ -17,12 +17,12 @@ void __cdecl FUN_1004d4d1(int param_1,int param_2,byte *param_3,byte *param_4)
   undefined3 extraout_var_07;
   uint uVar5;
   void *local_14;
-  undefined1 *puStack_10;
+  undefined4 uStack_10;
   undefined *puStack_c;
   undefined4 local_8;
   
   puStack_c = &DAT_100659b0;
-  puStack_10 = &LAB_10051364;
+  uStack_10 = 0x10051364;
   local_14 = ExceptionList;
   if (*(int *)(param_3 + 4) == 0) {
     return;

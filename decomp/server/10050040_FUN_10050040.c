@@ -1,0 +1,28 @@
+
+void __fastcall FUN_10050040(int param_1)
+
+{
+  void *this;
+  int iVar1;
+  void *this_00;
+  
+  iVar1 = (*DAT_10121f70)(0,2);
+  if (iVar1 == 0) {
+    FUN_10094b20(*(void **)(param_1 + 4),*(undefined4 *)((int)*(void **)(param_1 + 4) + 0x208),2,
+                 s_houndeye_he_pain3_wav_1010f228,0x3f800000,0x3f4ccccd,0,100);
+  }
+  else {
+    if (iVar1 == 1) {
+      FUN_10094b20(this_00,*(undefined4 *)(*(int *)(param_1 + 4) + 0x208),2,
+                   s_houndeye_he_pain4_wav_1010f2fc,0x3f800000,0x3f4ccccd,0,100);
+      return;
+    }
+    if (iVar1 == 2) {
+      this = *(void **)(*(int *)(param_1 + 4) + 0x208);
+      FUN_10094b20(this,this,2,s_houndeye_he_pain5_wav_1010f2e4,0x3f800000,0x3f4ccccd,0,100);
+      return;
+    }
+  }
+  return;
+}
+

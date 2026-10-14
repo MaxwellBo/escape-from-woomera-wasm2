@@ -10,13 +10,13 @@ SIZE_T __cdecl FUN_1004ce30(undefined *param_1)
   SIZE_T local_24;
   byte *local_20;
   void *local_14;
-  undefined1 *puStack_10;
+  undefined4 uStack_10;
   undefined *puStack_c;
   undefined4 local_8;
   
   local_8 = 0xffffffff;
   puStack_c = &DAT_10065970;
-  puStack_10 = &LAB_10051364;
+  uStack_10 = 0x10051364;
   local_14 = ExceptionList;
   if (DAT_100bd050 == 3) {
     ExceptionList = &local_14;

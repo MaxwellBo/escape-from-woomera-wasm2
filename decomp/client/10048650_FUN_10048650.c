@@ -13,7 +13,7 @@ Panel * __fastcall FUN_10048650(Panel *param_1)
   *(undefined ***)param_1 = &PTR_setPos_10065418;
   pIVar1 = operator_new(4);
   if (pIVar1 != (InputSignal *)0x0) {
-    *(undefined ***)pIVar1 = &PTR_LAB_100653ec;
+    *(undefined ***)pIVar1 = &PTR_FUN_100653ec;
     vgui::Panel::addInputSignal(param_1,pIVar1);
     return param_1;
   }

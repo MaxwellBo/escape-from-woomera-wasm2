@@ -13,11 +13,11 @@ undefined1 * __cdecl FUN_10047460(undefined1 *param_1,undefined1 *param_2,char *
   uint local_14;
   undefined4 local_10;
   void *pvStack_c;
-  undefined1 *puStack_8;
+  code *pcStack_8;
   undefined4 local_4;
   
   local_4 = 0xffffffff;
-  puStack_8 = &LAB_10058438;
+  pcStack_8 = FUN_10058438;
   pvStack_c = ExceptionList;
   local_1c[0] = *param_2;
   local_18 = 0;

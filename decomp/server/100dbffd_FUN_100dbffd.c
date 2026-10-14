@@ -1,0 +1,29 @@
+
+int __thiscall FUN_100dbffd(void *this,undefined1 *param_1,int param_2)
+
+{
+  int iVar1;
+  int local_8;
+  
+  local_8 = 0;
+  do {
+    if (param_2 == 0) {
+      return local_8;
+    }
+    param_2 = param_2 + -1;
+    if ((*(int *)((int)this + 8) == 0) &&
+       (*(undefined1 **)((int)this + 0x1c) < *(undefined1 **)((int)this + 0x20))) {
+      **(undefined1 **)((int)this + 0x1c) = *param_1;
+      *(int *)((int)this + 0x1c) = *(int *)((int)this + 0x1c) + 1;
+    }
+    else {
+      iVar1 = (**(code **)(*(int *)this + 0x1c))(*param_1);
+      if (iVar1 == -1) {
+        return local_8;
+      }
+    }
+    param_1 = param_1 + 1;
+    local_8 = local_8 + 1;
+  } while( true );
+}
+

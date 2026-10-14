@@ -5,13 +5,13 @@ void __cdecl FUN_1004aee6(uint *param_1)
   int *piVar1;
   uint dwBytes;
   void *local_14;
-  undefined1 *puStack_10;
+  undefined4 uStack_10;
   undefined *puStack_c;
   undefined4 local_8;
   
   local_8 = 0xffffffff;
   puStack_c = &DAT_10065850;
-  puStack_10 = &LAB_10051364;
+  uStack_10 = 0x10051364;
   local_14 = ExceptionList;
   if (DAT_100bd050 == 3) {
     ExceptionList = &local_14;

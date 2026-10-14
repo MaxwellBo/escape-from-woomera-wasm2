@@ -13,13 +13,13 @@ byte * __cdecl FUN_1004cb01(byte *param_1,uint *param_2)
   byte *local_28;
   uint *local_24;
   void *local_14;
-  undefined1 *puStack_10;
+  undefined4 uStack_10;
   undefined *puStack_c;
   undefined4 local_8;
   
   local_8 = 0xffffffff;
   puStack_c = &DAT_10065958;
-  puStack_10 = &LAB_10051364;
+  uStack_10 = 0x10051364;
   local_14 = ExceptionList;
   pbVar3 = (byte *)0x0;
   if (param_1 == (byte *)0x0) {

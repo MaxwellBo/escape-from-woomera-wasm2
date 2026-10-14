@@ -28,11 +28,11 @@ Panel * __cdecl FUN_10047830(Panel *param_1,undefined4 param_2)
   undefined4 local_20 [4];
   void *pvStack_10;
   void *local_c;
-  undefined1 *puStack_8;
+  code *pcStack_8;
   undefined4 local_4;
   
   local_4 = 0xffffffff;
-  puStack_8 = &LAB_10058649;
+  pcStack_8 = FUN_10058649;
   local_c = ExceptionList;
   bVar7 = false;
   bVar6 = false;
@@ -119,7 +119,7 @@ Panel * __cdecl FUN_10047830(Panel *param_1,undefined4 param_2)
           vgui::Panel::addInputSignal(pPVar8,(InputSignal *)0x0);
         }
         else {
-          *(undefined ***)pIVar10 = &PTR_LAB_10064fa0;
+          *(undefined ***)pIVar10 = &PTR_FUN_10064fa0;
           vgui::Panel::addInputSignal(pPVar8,pIVar10);
         }
       }
@@ -193,7 +193,7 @@ Panel * __cdecl FUN_10047830(Panel *param_1,undefined4 param_2)
             vgui::Panel::addInputSignal(pPVar8,(InputSignal *)0x0);
           }
           else {
-            *(undefined ***)pIVar10 = &PTR_LAB_10064fa0;
+            *(undefined ***)pIVar10 = &PTR_FUN_10064fa0;
             vgui::Panel::addInputSignal(pPVar8,pIVar10);
           }
         }
@@ -253,7 +253,7 @@ Panel * __cdecl FUN_10047830(Panel *param_1,undefined4 param_2)
             vgui::Panel::addInputSignal(pPVar8,(InputSignal *)0x0);
           }
           else {
-            *(undefined ***)pIVar10 = &PTR_LAB_10064fa0;
+            *(undefined ***)pIVar10 = &PTR_FUN_10064fa0;
             vgui::Panel::addInputSignal(pPVar8,pIVar10);
           }
         }
@@ -298,7 +298,7 @@ Panel * __cdecl FUN_10047830(Panel *param_1,undefined4 param_2)
             vgui::Panel::addInputSignal(pPVar8,(InputSignal *)0x0);
           }
           else {
-            *(undefined ***)pIVar10 = &PTR_LAB_10064fa0;
+            *(undefined ***)pIVar10 = &PTR_FUN_10064fa0;
             vgui::Panel::addInputSignal(pPVar8,pIVar10);
           }
         }
@@ -343,7 +343,7 @@ Panel * __cdecl FUN_10047830(Panel *param_1,undefined4 param_2)
             vgui::Panel::addInputSignal(pPVar8,(InputSignal *)0x0);
           }
           else {
-            *(undefined ***)pIVar10 = &PTR_LAB_10064fa0;
+            *(undefined ***)pIVar10 = &PTR_FUN_10064fa0;
             vgui::Panel::addInputSignal(pPVar8,pIVar10);
           }
         }
@@ -406,7 +406,7 @@ LAB_1004793b:
                 vgui::Panel::addInputSignal(pPVar8,(InputSignal *)0x0);
               }
               else {
-                *(undefined ***)pIVar10 = &PTR_LAB_10064fa0;
+                *(undefined ***)pIVar10 = &PTR_FUN_10064fa0;
                 vgui::Panel::addInputSignal(pPVar8,pIVar10);
               }
             }
@@ -451,7 +451,7 @@ LAB_1004793b:
                 vgui::Panel::addInputSignal(pPVar8,(InputSignal *)0x0);
               }
               else {
-                *(undefined ***)pIVar10 = &PTR_LAB_10064fa0;
+                *(undefined ***)pIVar10 = &PTR_FUN_10064fa0;
                 vgui::Panel::addInputSignal(pPVar8,pIVar10);
               }
             }
@@ -539,7 +539,7 @@ LAB_10048382:
     local_4 = 0xffffffff;
   }
   else {
-    *(undefined ***)pIVar10 = &PTR_LAB_10064fa0;
+    *(undefined ***)pIVar10 = &PTR_FUN_10064fa0;
     vgui::Panel::addInputSignal(pPVar8,pIVar10);
     local_4 = 0xffffffff;
   }

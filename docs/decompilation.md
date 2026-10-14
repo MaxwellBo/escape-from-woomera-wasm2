@@ -2,7 +2,7 @@
 
 Recovered with [REA](https://github.com/morluto/rea) 6.4.0 and Ghidra 12.1.4 from `EscapeFromWoomera_v084.zip`. The zip MD5 is `989cd1ba4052a8717eba548e0afa40da`, the same hash published on the ModDB file page. The server DLL SHA-256 is `b2395aab1e2ec65fd4fef354425866935e72d22e42fadab96ae167b416fccf74`.
 
-The DLL’s debug path is `C:\Development\EscapeFromWoomera\Source\dlls\Releasehl\EscapeFromWoomera.pdb`. `liblist.gam` names the game “Escape from Woomera”, version `0.84 (Beta 2)`, and points `gamedll` at `dlls/EscapeFromWoomera.dll`. The package also contains `spirit.fgd` and `spirit.ico`. The exported class list is the Spirit of Half-Life SDK plus a small set of mod entities. This note covers that mod-specific layer. Ghidra pseudocode is analysis output, not the original source.
+The DLL’s debug path is `C:\Development\EscapeFromWoomera\Source\dlls\Releasehl\EscapeFromWoomera.pdb`. `liblist.gam` names the game “Escape from Woomera”, version `0.84 (Beta 2)`, and points `gamedll` at `dlls/EscapeFromWoomera.dll`. The package also contains `spirit.fgd` and `spirit.ico`. The exported class list is the Spirit of Half-Life SDK plus a small set of mod entities. Ghidra listings for every recovered function in both DLLs are under `decomp/` (`decomp/README.md`). This note covers the mod-specific behavior the browser port follows. Ghidra pseudocode is analysis output, not the original source, and the page does not compile it.
 
 ## What the package is
 
@@ -157,10 +157,10 @@ The electrician’s `path_corner` loop is `efw_electrician_path_1` through `efw_
 
 ## Unknowns
 
-- The flex scanner’s generated tables were not lifted line by line. Every non-comment line in the 17 shipped scripts is `UNWANTED_ITEM`, `Q<topic flags>:`, or `A<flags>:`, which is the grammar `parse_script` accepts. No shipped line is dropped.
-- Most of `EscapeFromWoomera.dll` is Spirit of Half-Life. Those functions were not re-copied here; the browser links the Spirit 1.2 sources. Ghidra listings for the mod ranges are under `decomp/`.
+- The conversation parser is `FUN_100be970`. It references `parse error` and `parser stack overflow`. The flex scanner’s generated tables are data in the image, not a line-by-line transcription. Every non-comment line in the 17 shipped scripts is `UNWANTED_ITEM`, `Q<topic flags>:`, or `A<flags>:`, which is the grammar `parse_script` accepts. No shipped line is dropped.
+- Both DLLs are listed under `decomp/server` (5099 functions) and `decomp/client` (2933 functions). The browser still links Spirit of Half-Life 1.2 plus `engine/efw/`. It does not compile the Ghidra C. About 4% of each `.text` section is alignment padding and pointer tables, which are not functions. Two CRT floating-point helpers (`0x100c8ae2`, `0x1004b2c2`) are disassembled in place of C because the decompiler reported overlapping varnodes.
 - The client format walker (`0x10044f70`) builds VGUI buttons from the context records. The browser draws those same labels and commands (`efw_Talk`, `efw_Give %d`, `efw_Pickup %u`, `efw_UseWithMarker`, `efw_PickupPliers`, `efw_HideUnderBuilding`) at the projected point, with the item and speech sprites. Storyboard paint (`0x10043750`) tiles `sprites/efw_grey.spr`, then draws the sprite’s frames on a 4×3 grid inside an 800×600 picture centred on the screen. A fade of 0.1 per frame reaches 1 and then the prompt `Press left mouse button to continue` is drawn. The frames are tiles of that picture, not a film that returns to frame 0.
-- Ghidra did not create a function at the server command dispatcher (`0x1001a920`). That body was read from the bytes. The commands above are the ones whose branches were lifted.
+- The server command dispatcher is the function `efw_ClientCommand` at `0x1001a920` (`decomp/server/1001a920_efw_ClientCommand.c`).
 - `efw_TriggerMailPickupMessage` is named in the conversation scripts and is not a string in the server DLL. The loudspeaker is armed by the bin handler (`FUN_100c77c0`) and cleared by `efw_EndMailPickupMessage`.
 - Menu bytes `0x3c`, `0x3d`, `0x3e`, `0x40`, `0x41`, `0x42`, `0x44`, and `0x45` are the server captions in `FUN_100c81d0`. The browser prints those sentences. The storyboard bytes draw the prototype sprites and run the click command stored for that menu.
 

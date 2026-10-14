@@ -17,11 +17,11 @@ FUN_10048790(void *this,char *param_1,undefined4 param_2,undefined4 param_3,int 
   char *pcVar8;
   float10 fVar9;
   void *local_c;
-  undefined1 *puStack_8;
+  code *pcStack_8;
   undefined4 local_4;
   
   local_4 = 0xffffffff;
-  puStack_8 = &LAB_1005868e;
+  pcStack_8 = FUN_1005868e;
   local_c = ExceptionList;
   ExceptionList = &local_c;
   vgui::Panel::Panel(this,param_4,param_5,param_6,param_7);
@@ -69,7 +69,7 @@ FUN_10048790(void *this,char *param_1,undefined4 param_2,undefined4 param_3,int 
     pIVar4 = (InputSignal *)0x0;
   }
   else {
-    *(undefined ***)pIVar4 = &PTR_LAB_10064fa0;
+    *(undefined ***)pIVar4 = &PTR_FUN_10064fa0;
   }
   vgui::Panel::addInputSignal(this,pIVar4);
   if (param_9 == 0) {

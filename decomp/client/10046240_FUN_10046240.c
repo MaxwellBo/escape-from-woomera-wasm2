@@ -7,11 +7,11 @@ void __fastcall FUN_10046240(void *param_1)
   undefined1 local_1c [4];
   undefined4 *local_18;
   void *pvStack_c;
-  undefined1 *puStack_8;
+  code *pcStack_8;
   undefined4 local_4;
   
   local_4 = 0xffffffff;
-  puStack_8 = &LAB_100583f8;
+  pcStack_8 = FUN_100583f8;
   pvStack_c = ExceptionList;
   ExceptionList = &pvStack_c;
   FUN_10045aa0(param_1,local_1c,(int)param_1 + 0x28);

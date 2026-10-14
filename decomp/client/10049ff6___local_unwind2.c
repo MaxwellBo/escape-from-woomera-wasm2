@@ -11,12 +11,12 @@ void __cdecl __local_unwind2(int param_1,int param_2)
   int iVar1;
   int iVar2;
   void *pvStack_1c;
-  undefined1 *puStack_18;
+  code *pcStack_18;
   undefined4 local_14;
   int iStack_10;
   
   iStack_10 = param_1;
-  puStack_18 = &LAB_10049fd4;
+  pcStack_18 = FUN_10049fd4;
   pvStack_1c = ExceptionList;
   ExceptionList = &pvStack_1c;
   while( true ) {

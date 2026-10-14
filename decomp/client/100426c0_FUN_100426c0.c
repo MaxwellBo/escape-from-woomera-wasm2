@@ -9,11 +9,11 @@ undefined1 * __thiscall FUN_100426c0(void *this,undefined1 *param_1,undefined1 *
   uint uVar5;
   undefined4 *puVar6;
   void *local_c;
-  undefined1 *puStack_8;
+  code *pcStack_8;
   undefined4 local_4;
   
   local_4 = 0xffffffff;
-  puStack_8 = &LAB_100581b8;
+  pcStack_8 = FUN_100581b8;
   local_c = ExceptionList;
   ExceptionList = &local_c;
   *(undefined1 *)this = *param_1;

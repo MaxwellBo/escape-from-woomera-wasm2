@@ -43,12 +43,12 @@ void __cdecl FUN_10044f70(int *param_1)
   int *piStack_14;
   undefined4 uStack_10;
   void *pvStack_c;
-  undefined1 *puStack_8;
+  code *pcStack_8;
   uint uStack_4;
   
   piVar6 = param_1;
   uStack_4 = 0xffffffff;
-  puStack_8 = &LAB_10058380;
+  pcStack_8 = FUN_10058380;
   pvStack_c = ExceptionList;
   local_34 = param_1[9];
   local_30 = param_1[10];

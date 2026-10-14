@@ -4,12 +4,12 @@ void FUN_1004b7bf(undefined4 param_1,undefined4 param_2,int param_3,undefined *p
 {
   int local_20;
   void *local_14;
-  undefined1 *puStack_10;
+  undefined4 uStack_10;
   undefined *puStack_c;
   undefined4 local_8;
   
   puStack_c = &DAT_10065868;
-  puStack_10 = &LAB_10051364;
+  uStack_10 = 0x10051364;
   local_14 = ExceptionList;
   local_8 = 0;
   ExceptionList = &local_14;

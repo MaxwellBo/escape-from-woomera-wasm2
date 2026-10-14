@@ -5,11 +5,11 @@ Panel * __thiscall FUN_100484b0(void *this,undefined4 param_1,Panel *param_2)
   undefined4 uVar1;
   InputSignal *pIVar2;
   void *pvStack_c;
-  undefined1 *puStack_8;
+  code *pcStack_8;
   undefined4 local_4;
   
   local_4 = 0xffffffff;
-  puStack_8 = &LAB_1005866e;
+  pcStack_8 = FUN_1005866e;
   pvStack_c = ExceptionList;
   ExceptionList = &pvStack_c;
   vgui::Panel::Panel(this,0,0,DAT_100a4dcc,DAT_100a4dd0);
@@ -33,7 +33,7 @@ Panel * __thiscall FUN_100484b0(void *this,undefined4 param_1,Panel *param_2)
     pIVar2 = (InputSignal *)0x0;
   }
   else {
-    *(undefined ***)pIVar2 = &PTR_LAB_10064fa0;
+    *(undefined ***)pIVar2 = &PTR_FUN_10064fa0;
   }
   vgui::Panel::addInputSignal(this,pIVar2);
   ExceptionList = pvStack_c;

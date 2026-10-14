@@ -21,11 +21,11 @@ void FUN_10042140(void)
   undefined4 auStack_34 [2];
   undefined1 auStack_2c [32];
   void *pvStack_c;
-  undefined1 *puStack_8;
+  code *pcStack_8;
   int iStack_4;
   
   iStack_4 = 0xffffffff;
-  puStack_8 = &LAB_10058182;
+  pcStack_8 = FUN_10058182;
   pvStack_c = ExceptionList;
   ExceptionList = &pvStack_c;
   FUN_100424b0(auStack_9c,'\0');

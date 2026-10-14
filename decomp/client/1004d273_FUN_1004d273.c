@@ -5,12 +5,12 @@ void __cdecl FUN_1004d273(int param_1,undefined4 param_2,int param_3,int param_4
   int iVar1;
   int iVar2;
   void *local_14;
-  undefined1 *puStack_10;
+  undefined4 uStack_10;
   undefined *puStack_c;
   undefined4 local_8;
   
   puStack_c = &DAT_10065988;
-  puStack_10 = &LAB_10051364;
+  uStack_10 = 0x10051364;
   local_14 = ExceptionList;
   ExceptionList = &local_14;
   for (iVar2 = *(int *)(param_1 + 8); local_8 = 0xffffffff, iVar2 != param_4;

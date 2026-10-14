@@ -13,6 +13,6 @@ undefined * Catch_10043049(void)
   }
   pvVar2 = operator_new(uVar1);
   *(void **)(unaff_EBP + 8) = pvVar2;
-  return &DAT_1004306a;
+  return FUN_1004306a;
 }
 

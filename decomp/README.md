@@ -1,12 +1,17 @@
-# Decompiled mod ranges
+# Decompiled binaries
 
-These listings are Ghidra 12.1.4 output from Escape from Woomera v0.84. They are analysis output, not the original source. The browser does not compile them. `engine/efw/` is the structured port that links against Spirit of Half-Life 1.2.
+These listings are Ghidra 12.1.4 output from Escape from Woomera v0.84 (`EscapeFromWoomera.dll` and `client.dll`). They are analysis output, not the original source, and the browser does not compile them. `engine/efw/` is the structured port that links against Spirit of Half-Life 1.2.
 
-| Directory | DLL | Address range |
-| --- | --- | --- |
-| `server-mod/` | `EscapeFromWoomera.dll` | `0x100b8000`–`0x100c9000` |
-| `client/` | `client.dll` | `0x10040000`–`0x10050000` |
+Each file is one function, named `VA_symbol.c`.
 
-The server command dispatcher at `0x1001a920` was not created as its own function by Ghidra, so it is not in `server-mod/`. Its branches (`efw_Talk`, `efw_Give`, `efw_UseWithMarker`, `efw_HideUnderBuilding`, `efw_PickupPliers`, and the diary and level commands) were read from the bytes and ported in `engine/efw/efw_game.cpp`.
+| Directory | DLL | Functions | `.text` bytes in a function |
+| --- | --- | --- | --- |
+| `server/` | `EscapeFromWoomera.dll` | 5099 | 862241 / 901120 (95.69%) |
+| `client/` | `client.dll` | 2933 | 342606 / 360448 (95.05%) |
 
-Most of each DLL is Spirit of Half-Life. Those functions are linked from the Spirit 1.2 sources instead of being re-lifted.
+The bytes left outside a function are `NOP` / `INT3` alignment and embedded pointer tables. Ghidra created a function at the server command dispatcher, `decomp/server/1001a920_efw_ClientCommand.c` (`efw_Talk`, `efw_Give`, `efw_UseWithMarker`, `efw_HideUnderBuilding`, `efw_PickupPliers`, and the diary and level commands). The conversation parser is `decomp/server/100be970_FUN_100be970.c` (references to `parse error` and `parser stack overflow`).
+
+Two CRT floating-point helpers hit a Ghidra decompiler error (`Overlapping input varnodes`). Their files are Capstone disassembly of the function body:
+
+- `server/100c8ae2_FUN_100c8ae2.c`
+- `client/1004b2c2_FUN_1004b2c2.c`

@@ -13,7 +13,7 @@ void FUN_10047720(void)
   char *pcVar7;
   char acStack_100 [256];
   
-  (*DAT_100a5038)(s_EFW_Menu_1007b78c,&LAB_10047680);
+  (*DAT_100a5038)(s_EFW_Menu_1007b78c,FUN_10047680);
   _DAT_100bc9f4 = 0;
   piVar5 = &DAT_100bc884;
   do {

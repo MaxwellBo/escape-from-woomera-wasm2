@@ -4,12 +4,12 @@ void __cdecl FUN_1004d695(int param_1)
 {
   undefined *UNRECOVERED_JUMPTABLE;
   void *local_14;
-  undefined1 *puStack_10;
+  undefined4 uStack_10;
   undefined *puStack_c;
   undefined4 local_8;
   
   puStack_c = &DAT_100659c0;
-  puStack_10 = &LAB_10051364;
+  uStack_10 = 0x10051364;
   local_14 = ExceptionList;
   if ((param_1 != 0) &&
      (UNRECOVERED_JUMPTABLE = *(undefined **)(*(int *)(param_1 + 0x1c) + 4),

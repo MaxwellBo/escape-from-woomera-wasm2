@@ -10,12 +10,12 @@ undefined1 * __cdecl FUN_10041fb0(undefined1 *param_1,undefined1 *param_2)
   char *local_18;
   uint local_14;
   void *local_c;
-  undefined1 *puStack_8;
+  code *pcStack_8;
   undefined4 local_4;
   
   puVar1 = param_2;
   local_4 = 0xffffffff;
-  puStack_8 = &LAB_10058198;
+  pcStack_8 = FUN_10058198;
   local_c = ExceptionList;
   ExceptionList = &local_c;
   FUN_10042610(&DAT_100baee8,&param_2,(int)param_2);

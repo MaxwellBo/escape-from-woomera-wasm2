@@ -28,11 +28,11 @@ undefined1 * __thiscall FUN_10045aa0(void *this,undefined1 *param_1,int param_2)
   undefined1 local_3c [16];
   char local_2c [32];
   void *local_c;
-  undefined1 *puStack_8;
+  code *pcStack_8;
   int local_4;
   
   local_4 = 0xffffffff;
-  puStack_8 = &LAB_100583c3;
+  pcStack_8 = FUN_100583c3;
   local_c = ExceptionList;
   local_90[0] = local_95;
   ExceptionList = &local_c;

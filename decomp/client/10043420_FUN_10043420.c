@@ -10,10 +10,10 @@ void __cdecl FUN_10043420(undefined1 *param_1,undefined1 *param_2)
   uint uVar5;
   undefined4 *puVar6;
   void *local_c;
-  undefined1 *puStack_8;
+  code *pcStack_8;
   undefined4 local_4;
   
-  puStack_8 = &LAB_100581f9;
+  pcStack_8 = FUN_100581f9;
   local_c = ExceptionList;
   local_4 = 0;
   if (param_1 != (undefined1 *)0x0) {

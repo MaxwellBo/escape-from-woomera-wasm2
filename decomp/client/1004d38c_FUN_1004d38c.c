@@ -7,13 +7,13 @@ FUN_1004d38c(DWORD param_1,undefined4 param_2,DWORD param_3,undefined4 param_4,u
   DWORD *pDVar1;
   undefined4 uVar2;
   void *local_14;
-  undefined1 *puStack_10;
+  undefined4 uStack_10;
   undefined *puStack_c;
   undefined4 local_8;
   
   local_8 = 0xffffffff;
   puStack_c = &DAT_10065998;
-  puStack_10 = &LAB_10051364;
+  uStack_10 = 0x10051364;
   local_14 = ExceptionList;
   ExceptionList = &local_14;
   FUN_1004d7f1();
