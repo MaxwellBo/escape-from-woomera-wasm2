@@ -116,6 +116,9 @@ static int g_cmdsApplied = 0;
 static int g_level = 1;
 static int g_seenLevel = 0;
 static int g_freshMap = 0;
+// DAT_1011d14c starts at 1. FUN_100c6780 resets hope only while this is set,
+// and a level-1 spawn always sets it. Level 2 and 3 keep the current hope.
+static int g_hopeLatch = 1;
 
 // FUN_100c7670 / FUN_100c7740. Level 1 plays the next clip when fmod(time, 120)
 // is within 0.5s and the accumulator has passed 5s. Slot 0 is the mail call.
@@ -480,12 +483,19 @@ static int electrician_sees(CBasePlayer *player)
 	return 0;
 }
 
-static int map_level()
+// gpGlobals->mapname stays on the previous map across CHANGE_LEVEL in this
+// build, so the chapter comes from who actually spawned.
+static int detect_level()
 {
+	if (UTIL_FindEntityByClassname(NULL, "monster_patrol_guard")) return 2;
+	if (UTIL_FindEntityByTargetname(NULL, "efw_electrician")) return 1;
+	if (UTIL_FindEntityByTargetname(NULL, "efw_PliersMarker")) return 1;
+	if (UTIL_FindEntityByClassname(NULL, "monster_refugee")) return 3;
 	const char *name = STRING(gpGlobals->mapname);
-	if (strstr(name, "level2")) return 2;
-	if (strstr(name, "level3")) return 3;
-	return 1;
+	if (name && strstr(name, "level2")) return 2;
+	if (name && strstr(name, "level3")) return 3;
+	if (name && strstr(name, "level1")) return 1;
+	return 0;
 }
 
 static void send_panel(CBasePlayer *player);
@@ -513,8 +523,6 @@ static void change_map(const char *map)
 	g_talking = 0;
 	g_board = 0;
 	g_caught = 0;
-	g_hope = HOPE_START;
-	g_hopeDead = 0;
 	g_annReady = 0;
 	CHANGE_LEVEL((char *)map, NULL);
 }
@@ -1429,22 +1437,40 @@ int Efw_ClientCommand(edict_t *pent)
 void Efw_StartFrame()
 {
 	load_scripts();
-	g_level = map_level();
-	// FUN_100c6740 restates hope when a chapter starts. ChangeLevel can
-	// restore the server globals from before that write, so the new map's
-	// first frames apply it again.
-	if (g_seenLevel != g_level) {
-		int previous = g_seenLevel;
-		g_seenLevel = g_level;
-		if (previous != 0) {
+	int detected = detect_level();
+	if (detected && detected != g_seenLevel) {
+		g_seenLevel = detected;
+		g_level = detected;
+		// FUN_100c6780 runs from the player spawn at 0x1001a533.
+		if (g_level == 1) g_hopeLatch = 1;
+		if (g_hopeLatch) {
 			g_hope = HOPE_START;
 			g_hopeDead = 0;
-			g_board = 0;
-			g_caught = 0;
-			g_annReady = 0;
-			g_talking = 0;
-			g_freshMap = 1;
+			g_hopeLatch = 0;
+			g_ntopics = 0;
+			set_topic("ESCAPE", 1);
+			set_topic("GREET", 1);
+			set_topic("GOODBYE", 1);
+			g_pliersInBin = 0;
+			g_tagOnBoard = 0;
+			g_binFails = 0;
 		}
+		g_ndiary = 0;
+		g_diaryReady = 1;
+		remember_diary(0, 2);
+		remember_diary(1, 2);
+		if (g_level >= 2) {
+			for (int id = 2; id <= 10; id++) remember_diary(id, 2);
+		}
+		g_diaryIndex = 1;
+		g_diaryOpen = 0;
+		g_board = 0;
+		g_caught = 0;
+		g_talking = 0;
+		g_annReady = 0;
+		g_freshMap = 1;
+	} else if (detected) {
+		g_level = detected;
 	}
 	if (!g_msgsReady) {
 		gmsgEfw = REG_USER_MSG("EFWShow", -1);
