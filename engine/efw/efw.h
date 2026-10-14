@@ -10,5 +10,7 @@ int Efw_ClientCommand(edict_s *player);
 int Efw_TryUse(CBasePlayer *player);
 
 void Efw_BeginTalk(CBasePlayer *player, const char *targetname);
-void Efw_GuardSpot(CBaseMonster *guard);
+// Returns 1 when the guard is leaving the path to investigate or chase.
+int Efw_GuardSpot(CBaseMonster *guard);
+int Efw_GuardPaused();
 int Efw_PlayerIsHiding();

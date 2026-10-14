@@ -3,6 +3,9 @@
 #include "hud.h"
 #include "cl_util.h"
 #include "parsemsg.h"
+#include "const.h"
+#include "triangleapi.h"
+#include "com_model.h"
 
 static int g_hope = 100;
 static char g_lines[8][256];
@@ -18,6 +21,7 @@ static int g_boardLoaded = 0;
 static HSPRITE g_boardSpr = 0;
 static int g_boardFrame = 0;
 static float g_boardFrameTime = 0;
+static int g_boardSettled = 0;
 
 static int MsgFunc_EFWShow(const char *name, int size, void *buf)
 {
@@ -50,6 +54,7 @@ static int MsgFunc_EFWShow(const char *name, int size, void *buf)
 			g_boardLoaded = 0;
 			g_boardFrame = 0;
 			g_boardFrameTime = 0;
+			g_boardSettled = 0;
 		}
 		return 1;
 	}
@@ -78,15 +83,43 @@ void EfwHud_Init()
 	gEngfuncs.pfnHookUserMsg("EFWShow", MsgFunc_EFWShow);
 }
 
+// FUN_100483d0 sizes the storyboard panel to the screen. SPR_Draw has no
+// scale, so the sprite is stretched with the triangle API across that panel.
+static void draw_panel_sprite(HSPRITE spr, int frame, int x, int y, int w, int h)
+{
+	const model_s *model = gEngfuncs.GetSpritePointer ? gEngfuncs.GetSpritePointer(spr) : NULL;
+	if (!model || !gEngfuncs.pTriAPI || !gEngfuncs.pTriAPI->SpriteTexture) {
+		wrect_t rc;
+		rc.left = 0;
+		rc.top = 0;
+		rc.right = SPR_Width(spr, frame);
+		rc.bottom = SPR_Height(spr, frame);
+		SPR_Set(spr, 255, 255, 255);
+		SPR_Draw(frame, x, y, &rc);
+		return;
+	}
+	gEngfuncs.pTriAPI->RenderMode(kRenderNormal);
+	gEngfuncs.pTriAPI->CullFace(TRI_NONE);
+	if (!gEngfuncs.pTriAPI->SpriteTexture((struct model_s *)model, frame)) return;
+	gEngfuncs.pTriAPI->Color4ub(255, 255, 255, 255);
+	gEngfuncs.pTriAPI->Brightness(1);
+	gEngfuncs.pTriAPI->Begin(TRI_QUADS);
+	gEngfuncs.pTriAPI->TexCoord2f(0, 0);
+	gEngfuncs.pTriAPI->Vertex3f((float)x, (float)y, 0);
+	gEngfuncs.pTriAPI->TexCoord2f(1, 0);
+	gEngfuncs.pTriAPI->Vertex3f((float)(x + w), (float)y, 0);
+	gEngfuncs.pTriAPI->TexCoord2f(1, 1);
+	gEngfuncs.pTriAPI->Vertex3f((float)(x + w), (float)(y + h), 0);
+	gEngfuncs.pTriAPI->TexCoord2f(0, 1);
+	gEngfuncs.pTriAPI->Vertex3f((float)x, (float)(y + h), 0);
+	gEngfuncs.pTriAPI->End();
+}
+
 void EfwHud_Redraw()
 {
 	SCREENINFO si;
 	si.iSize = sizeof(si);
 	gEngfuncs.pfnGetScreenInfo(&si);
-	char hope[32];
-	snprintf(hope, sizeof(hope), "Hope %d", g_hope);
-	gEngfuncs.pfnDrawSetTextColor(0.95f, 0.85f, 0.45f);
-	gEngfuncs.pfnDrawConsoleString(12, 12, hope);
 	if (g_boardOn && g_boardPath[0]) {
 		if (!g_boardLoaded) {
 			g_boardSpr = SPR_Load(g_boardPath);
@@ -96,23 +129,18 @@ void EfwHud_Redraw()
 		if (g_boardSpr) {
 			int frames = SPR_Frames(g_boardSpr);
 			if (frames < 1) frames = 1;
-			if (g_boardFrame < frames - 1 && gHUD.m_flTime - g_boardFrameTime > 0.12f) {
-				g_boardFrame++;
+			// The later frames dissolve to black. Play that once, then leave
+			// the illustration (frame 0) up until the player continues.
+			if (!g_boardSettled && gHUD.m_flTime - g_boardFrameTime > 0.12f) {
 				g_boardFrameTime = gHUD.m_flTime;
+				if (g_boardFrame < frames - 1) g_boardFrame++;
+				else {
+					g_boardFrame = 0;
+					g_boardSettled = 1;
+				}
 			}
-			int w = SPR_Width(g_boardSpr, g_boardFrame);
-			int h = SPR_Height(g_boardSpr, g_boardFrame);
-			int x = (si.iWidth - w) / 2;
-			int y = (si.iHeight - h) / 2;
-			if (x < 0) x = 0;
-			if (y < 0) y = 0;
-			wrect_t rc;
-			rc.left = 0;
-			rc.top = 0;
-			rc.right = w;
-			rc.bottom = h;
-			SPR_Set(g_boardSpr, 255, 255, 255);
-			SPR_Draw(g_boardFrame, x, y, &rc);
+			FillRGBA(0, 0, si.iWidth, si.iHeight, 0, 0, 0, 255);
+			draw_panel_sprite(g_boardSpr, g_boardFrame, 0, 0, si.iWidth, si.iHeight);
 		}
 		if (g_boardNext) {
 			gEngfuncs.pfnDrawSetTextColor(0.95f, 0.9f, 0.7f);
@@ -149,6 +177,10 @@ void EfwHud_Redraw()
 		gEngfuncs.pfnDrawConsoleString(24, y, g_lines[i]);
 		y += 16;
 	}
+	char hope[32];
+	snprintf(hope, sizeof(hope), "Hope %d", g_hope);
+	gEngfuncs.pfnDrawSetTextColor(0.95f, 0.85f, 0.45f);
+	gEngfuncs.pfnDrawConsoleString(12, 12, hope);
 }
 
 int EfwHud_Key(int down, int keynum)

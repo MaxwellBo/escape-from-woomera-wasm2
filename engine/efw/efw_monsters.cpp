@@ -90,8 +90,17 @@ void CPatrolGuard::Spawn()
 
 void CPatrolGuard::PatrolThink()
 {
+	// FUN_100c54e0. A storyboard pause stops the patrol and pins the guard.
+	if (Efw_GuardPaused()) {
+		pev->framerate = 0;
+		pev->nextthink = gpGlobals->time + 0.05f;
+		pev->velocity = g_vecZero;
+		return;
+	}
+	pev->framerate = 1;
+	pev->movetype = MOVETYPE_STEP;
 	pev->nextthink = gpGlobals->time + 0.1f;
-	Efw_GuardSpot(this);
+	if (Efw_GuardSpot(this)) return;
 	if (!pev->target || !STRING(pev->target)[0]) return;
 	if (FNullEnt(m_path) || m_path->free)
 		m_path = FIND_ENTITY_BY_TARGETNAME(NULL, STRING(pev->target));

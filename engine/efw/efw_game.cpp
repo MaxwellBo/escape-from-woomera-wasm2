@@ -37,6 +37,14 @@ static const float ELEC_SEE_ANGLE = 0.61086476f;
 // FUN_100c5c50: patrol guards see out to 512 units inside a 60 degree cone.
 static const float GUARD_SEE_DIST = 512.0f;
 static const float GUARD_SEE_ANGLE = 1.0471976f;
+// Patrol state machine at 0x100c54e0. Times are 0.7s, 5s, and 1s.
+// Distances are 128 (commit to the halt) and 75 (isolation board).
+static const float GUARD_NOTICE = 0.7f;
+static const float GUARD_LOST = 5.0f;
+static const float GUARD_REACT = 1.0f;
+static const float GUARD_CLOSE = 128.0f;
+static const float GUARD_CATCH = 75.0f;
+static const float HOPE_GUARD = 10.0f;
 
 static const char *SCRIPT_FILES[] = {
 	"Amir", "Detainee", "Electrician", "Elika", "Fashid", "Gate_Guard", "Gholan",
@@ -119,6 +127,11 @@ static int g_freshMap = 0;
 // DAT_1011d14c starts at 1. FUN_100c6780 resets hope only while this is set,
 // and a level-1 spawn always sets it. Level 2 and 3 keep the current hope.
 static int g_hopeLatch = 1;
+// DAT_10114740 starts at 1. The player think at 0x1007db60 shows menu 0x49
+// once, and only while the chapter is level 1, then clears the byte.
+static int g_intro = 1;
+// FUN_100c7490. efw_pause 1 and a storyboard both set this. Patrol thinks bail.
+static int g_paused = 0;
 
 // FUN_100c7670 / FUN_100c7740. Level 1 plays the next clip when fmod(time, 120)
 // is within 0.5s and the accumulator has passed 5s. Slot 0 is the mail call.
@@ -524,7 +537,22 @@ static void change_map(const char *map)
 	g_board = 0;
 	g_caught = 0;
 	g_annReady = 0;
+	g_paused = 0;
 	CHANGE_LEVEL((char *)map, NULL);
+}
+
+// FUN_100c74a0. efw_pause 1 pins every patrol guard: no animation, no step, origin held.
+static void freeze_patrol()
+{
+	g_paused = 1;
+	CBaseEntity *ent = NULL;
+	while ((ent = UTIL_FindEntityByClassname(ent, "monster_patrol_guard"))) {
+		ent->pev->framerate = 0;
+		ent->pev->nextthink = gpGlobals->time + 0.05f;
+		ent->pev->movetype = MOVETYPE_NONE;
+		ent->pev->velocity = g_vecZero;
+		UTIL_SetOrigin(ent, ent->pev->origin);
+	}
 }
 
 static void apply_commands(CBasePlayer *player, const char *commands)
@@ -815,6 +843,7 @@ static void present_menu(CBasePlayer *player, int id)
 	g_board = id;
 	g_talking = 0;
 	g_diaryOpen = 0;
+	freeze_patrol();
 	if (player) {
 		player->pev->flags |= FL_FROZEN;
 		send_panel(player);
@@ -825,6 +854,7 @@ static void dismiss_board(CBasePlayer *player)
 {
 	int id = g_board;
 	g_board = 0;
+	g_paused = 0;
 	if (player && !g_ending) player->pev->flags &= ~FL_FROZEN;
 	const char *next = menu_next(id);
 	if (player) send_panel(player);
@@ -1214,17 +1244,151 @@ static int guard_sees(CBaseMonster *guard, CBasePlayer *player)
 	return tr.flFraction >= 1.0f;
 }
 
-void Efw_GuardSpot(CBaseMonster *guard)
+// Monster +0x2e4 is CBaseMonster::m_iTriggerCondition. 8 is AITRIGGER_HEARPLAYER.
+// KeyValue is the only writer. FUN_100c5e30 treats that value as "heard" and clears it.
+static int guard_hears(CBaseMonster *guard)
 {
-	if (g_ending || g_level != 2 || !guard) return;
-	CBasePlayer *player = live_player();
-	if (!player) return;
-	if (Efw_PlayerIsHiding()) return;
-	if (g_caught || g_board) return;
-	if (guard_sees(guard, player)) {
-		g_caught = 1;
-		present_menu(player, 0x46);
+	if (guard->m_iTriggerCondition != AITRIGGER_HEARPLAYER) return 0;
+	guard->m_iTriggerCondition = 0;
+	return 1;
+}
+
+static float guard_dist(CBaseMonster *guard, CBasePlayer *player)
+{
+	Vector delta = player->pev->origin - guard->pev->origin;
+	delta.z = 0;
+	return delta.Length();
+}
+
+struct GuardSpot {
+	edict_t *ed;
+	int state;
+	float tNotice;
+	float tMark;
+	Vector pos;
+};
+
+static GuardSpot g_spots[16];
+
+static void reset_spots()
+{
+	memset((void *)g_spots, 0, sizeof(g_spots));
+}
+
+static GuardSpot *spot_for(CBaseMonster *guard)
+{
+	edict_t *ed = guard->edict();
+	GuardSpot *freeSlot = NULL;
+	for (int i = 0; i < 16; i++) {
+		if (g_spots[i].ed == ed) return &g_spots[i];
+		if (!freeSlot && (!g_spots[i].ed || FNullEnt(g_spots[i].ed))) freeSlot = &g_spots[i];
 	}
+	if (!freeSlot) freeSlot = &g_spots[0];
+	memset((void *)freeSlot, 0, sizeof(*freeSlot));
+	freeSlot->ed = ed;
+	return freeSlot;
+}
+
+static void step_toward(CBaseEntity *ent, const Vector &dest, float speed)
+{
+	Vector delta = dest - ent->pev->origin;
+	delta.z = 0;
+	float dist = delta.Length();
+	if (dist < 16) {
+		ent->pev->velocity.x = 0;
+		ent->pev->velocity.y = 0;
+		return;
+	}
+	Vector dir = delta * (1.0f / dist);
+	ent->pev->velocity.x = dir.x * speed;
+	ent->pev->velocity.y = dir.y * speed;
+	ent->pev->angles.y = UTIL_VecToYaw(dir);
+	ent->pev->ideal_yaw = ent->pev->angles.y;
+}
+
+// FUN_100c5480. The halt line puts every patrol guard into the chase state.
+static void alert_guards(CBasePlayer *player)
+{
+	CBaseEntity *ent = NULL;
+	while ((ent = UTIL_FindEntityByClassname(ent, "monster_patrol_guard"))) {
+		GuardSpot *spot = spot_for((CBaseMonster *)ent);
+		spot->state = 4;
+		spot->pos = player->pev->origin;
+	}
+}
+
+int Efw_GuardPaused()
+{
+	return g_paused;
+}
+
+// States at monster+0x398: 0 patrol, 1 noticed, 2 lost them, 3 closing in, 4 chase.
+// A catch subtracts 10 hope (FUN_100c4d10) and opens menu 0x46.
+int Efw_GuardSpot(CBaseMonster *guard)
+{
+	if (g_ending || g_level != 2 || !guard) return 0;
+	CBasePlayer *player = live_player();
+	if (!player) return 0;
+	GuardSpot *spot = spot_for(guard);
+	if (g_caught || g_board) return spot->state >= 2;
+
+	int sees = !Efw_PlayerIsHiding() && guard_sees(guard, player);
+	float now = gpGlobals->time;
+
+	if (spot->state == 0) {
+		int heard = sees ? 0 : guard_hears(guard);
+		if (sees || heard) {
+			spot->state = 1;
+			spot->pos = player->pev->origin;
+			spot->tNotice = now;
+			spot->tMark = now;
+		}
+	} else if (spot->state == 1) {
+		if (!sees || guard_hears(guard)) {
+			spot->state = 0;
+		} else if (now - spot->tNotice >= GUARD_NOTICE) {
+			ClientPrint(player->pev, HUD_PRINTCENTER, "Hey, what was that? I thought I saw something.");
+			spot->pos = player->pev->origin;
+			spot->tNotice = now;
+			spot->tMark = now;
+			spot->state = 3;
+		}
+	} else if (spot->state == 2) {
+		if (sees || guard_hears(guard)) {
+			ClientPrint(player->pev, HUD_PRINTCENTER, "Hmmm?");
+			spot->state = 3;
+			spot->tMark = now;
+		} else if (now - spot->tNotice >= GUARD_LOST && now - spot->tMark >= GUARD_REACT) {
+			ClientPrint(player->pev, HUD_PRINTCENTER, "Ah, guess it was nothing...");
+			spot->state = 0;
+		}
+	} else if (spot->state == 3) {
+		if (!sees || guard_hears(guard)) {
+			spot->tMark = now;
+			spot->state = 2;
+		} else {
+			spot->pos = player->pev->origin;
+			if (now - spot->tMark >= GUARD_REACT || guard_dist(guard, player) < GUARD_CLOSE) {
+				ClientPrint(player->pev, HUD_PRINTCENTER, "Halt! Put your hands up, and get down on the ground!");
+				spot->tMark = now;
+				alert_guards(player);
+			}
+		}
+	} else if (spot->state == 4) {
+		spot->pos = player->pev->origin;
+		if (guard_dist(guard, player) < GUARD_CATCH) {
+			g_caught = 1;
+			g_hope -= HOPE_GUARD;
+			clamp_hope();
+			present_menu(player, 0x46);
+		}
+	}
+
+	if (spot->state >= 2) {
+		step_toward(guard, spot->pos, spot->state == 4 ? 160.0f : 90.0f);
+		return 1;
+	}
+	return 0;
 }
 
 static int try_interact(CBasePlayer *player)
@@ -1392,6 +1556,13 @@ int Efw_ClientCommand(edict_t *pent)
 		use_with_marker(player, command_item(1), CMD_ARGV(2));
 	else if (!strcmp(cmd, "efw_PickupPliers"))
 		try_pickup_pliers(player);
+	else if (!strcmp(cmd, "efw_Pickup") && CMD_ARGC() > 1) {
+		// 0x1001b5d3. argv1 is a classname. aiment must be clear, then the
+		// item virtual at +0x114 runs (AddToPlayer on weapon_efw_*).
+		CBaseEntity *ent = UTIL_FindEntityByClassname(NULL, CMD_ARGV(1));
+		if (ent && !ent->pev->aiment && !strncmp(STRING(ent->pev->classname), "weapon_", 7))
+			((CBasePlayerItem *)ent)->AddToPlayer(player);
+	}
 	else if (!strcmp(cmd, "efw_HideUnderBuilding"))
 		try_hide(player);
 	else if (!strcmp(cmd, "efw_changelevel") && CMD_ARGC() > 1)
@@ -1423,8 +1594,13 @@ int Efw_ClientCommand(edict_t *pent)
 		send_panel(player);
 	} else if (!strcmp(cmd, "efw_pause")) {
 		int on = CMD_ARGC() > 1 && CMD_ARGV(1)[0] == '1';
-		if (on) player->pev->flags |= FL_FROZEN;
-		else if (!g_ending) player->pev->flags &= ~FL_FROZEN;
+		if (on) {
+			player->pev->flags |= FL_FROZEN;
+			freeze_patrol();
+		} else if (!g_ending) {
+			player->pev->flags &= ~FL_FROZEN;
+			g_paused = 0;
+		}
 	} else if (!strcmp(cmd, "efw_set_state") && CMD_ARGC() > 1) {
 		int on = CMD_ARGC() > 2 && CMD_ARGV(2)[0] == '1';
 		set_topic(CMD_ARGV(1), on);
@@ -1468,6 +1644,8 @@ void Efw_StartFrame()
 		g_caught = 0;
 		g_talking = 0;
 		g_annReady = 0;
+		g_paused = 0;
+		reset_spots();
 		g_freshMap = 1;
 	} else if (detected) {
 		g_level = detected;
@@ -1483,6 +1661,11 @@ void Efw_StartFrame()
 		g_freshMap = 0;
 	}
 	if (!player || g_ending) return;
+	// 0x1007db60. The flag starts set, so the first level-1 think opens the intro.
+	if (g_intro && g_seenLevel == 1 && !g_board) {
+		g_intro = 0;
+		present_menu(player, 0x49);
+	}
 	seed_diary();
 	drive_electrician();
 	tick_announcer(player);
