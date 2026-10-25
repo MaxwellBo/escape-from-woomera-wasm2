@@ -4,12 +4,12 @@ These listings are Ghidra 12.1.4 output from Escape from Woomera v0.84 (`EscapeF
 
 Each file is one function, named `VA_symbol.c`.
 
-| Directory | DLL | Functions | `.text` bytes in a function |
+| Directory | DLL | Listings | `.text` bytes in a function |
 | --- | --- | --- | --- |
-| `server/` | `EscapeFromWoomera.dll` | 5099 | 862241 / 901120 (95.69%) |
-| `client/` | `client.dll` | 2933 | 342606 / 360448 (95.05%) |
+| `server/` | `EscapeFromWoomera.dll` | 5154 | 862297 / 901120 (95.69%) |
+| `client/` | `client.dll` | 3061 | 343391 / 360448 (95.27%) |
 
-The bytes left outside a function are `NOP` / `INT3` alignment and embedded pointer tables. Ghidra created a function at the server command dispatcher, `decomp/server/1001a920_efw_ClientCommand.c` (`efw_Talk`, `efw_Give`, `efw_UseWithMarker`, `efw_HideUnderBuilding`, `efw_PickupPliers`, and the diary and level commands). The conversation parser is `decomp/server/100be970_FUN_100be970.c` (references to `parse error` and `parser stack overflow`).
+The bytes left outside a function are `NOP` / `INT3` alignment and embedded pointer tables. Import jumps that were sitting in those gaps are listed too (`TlsFree`, `SetEnvironmentVariableA`, the vgui thunks, and the small CRT helpers beside them). Ghidra created a function at the server command dispatcher, `decomp/server/1001a920_efw_ClientCommand.c` (`efw_Talk`, `efw_Give`, `efw_UseWithMarker`, `efw_HideUnderBuilding`, `efw_PickupPliers`, and the diary and level commands). The conversation parser is `decomp/server/100be970_FUN_100be970.c` (references to `parse error` and `parser stack overflow`).
 
 Two CRT floating-point helpers hit a Ghidra decompiler error (`Overlapping input varnodes`). Their files are Capstone disassembly of the function body:
 
