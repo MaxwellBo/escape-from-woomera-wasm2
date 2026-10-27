@@ -1399,7 +1399,10 @@ def tu_header():
 
 
 def write_relocs(path, rvas):
-    lines = ["#include <cstdint>", "extern \"C\" const uint32_t ghidra_relocs[] = {"]
+    lines = [
+        '#include "ghidra_compat.hpp"',
+        "extern \"C\" const uint32_t ghidra_relocs[] = {",
+    ]
     for i in range(0, len(rvas), 12):
         lines.append(",".join(str(r) for r in rvas[i:i + 12]) + ",")
     lines.append("};")
@@ -1765,13 +1768,13 @@ def compile_wasm(out, jobs, side):
             old.unlink()
     obj_dir.mkdir(parents=True, exist_ok=True)
     cpps = sorted((out / "src").glob("batch_*.cpp"))
+    side_def = ("-DGHIDRA_SERVER=1",) if side == "server" else ("-DGHIDRA_CLIENT=1",)
     extras = [
-        (out / "ghidra_image.cpp", "-O0", ()),
-        (out / "ghidra_relocs.cpp", "-O0", ()),
-        (out / "ghidra_abi.cpp", "-O1", ()),
-        (ROOT / "ghidra" / "ghidra_host.cpp", "-O1", (
+        (out / "ghidra_image.cpp", "-O0", side_def),
+        (out / "ghidra_relocs.cpp", "-O0", side_def),
+        (out / "ghidra_abi.cpp", "-O1", side_def),
+        (ROOT / "ghidra" / "ghidra_host.cpp", "-O1", side_def + (
             f'-DGHIDRA_SIDE="{side}"',
-            "-DGHIDRA_SERVER=1" if side == "server" else "-DGHIDRA_CLIENT=1",
         )),
     ]
     failures = []
@@ -1780,7 +1783,9 @@ def compile_wasm(out, jobs, side):
     with ThreadPoolExecutor(max_workers=jobs) as pool:
         futs = []
         for cpp in cpps:
-            futs.append(pool.submit(wasm_compile, cpp, obj_dir / (cpp.stem + ".o"), out, "-O1"))
+            futs.append(pool.submit(
+                wasm_compile, cpp, obj_dir / (cpp.stem + ".o"), out, "-O1", side_def,
+            ))
         for extra, opt, defines in extras:
             futs.append(pool.submit(
                 wasm_compile, extra, obj_dir / (extra.stem + ".o"), out, opt, defines,

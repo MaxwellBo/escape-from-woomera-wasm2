@@ -657,6 +657,20 @@ struct SCell {
 	AnyPtr operator&() { return AnyPtr{(void *)this}; }
 };
 
+// Each side module exports its data. The same symbol name would make the
+// client's loads resolve to the server image, which is already relocated.
+#if defined(GHIDRA_SERVER)
+#define ghidra_image ghidra_image_server
+#define ghidra_image_size ghidra_image_size_server
+#define ghidra_relocs ghidra_relocs_server
+#define ghidra_reloc_count ghidra_reloc_count_server
+#elif defined(GHIDRA_CLIENT)
+#define ghidra_image ghidra_image_client
+#define ghidra_image_size ghidra_image_size_client
+#define ghidra_relocs ghidra_relocs_client
+#define ghidra_reloc_count ghidra_reloc_count_client
+#endif
+
 extern unsigned char ghidra_image[];
 extern unsigned ghidra_image_size;
 
