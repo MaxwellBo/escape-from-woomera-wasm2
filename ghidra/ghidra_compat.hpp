@@ -701,8 +701,58 @@ GhidraVa ghidra_to_piece(T &x) {
 }
 #endif
 
+// Convert a call-site argument to the callee's parameter type. The wasm call
+// then has the callee's type. Building the type from the argument instead
+// passes an 8-byte cell where the import thunk takes a GStruct, and the
+// indirect call traps.
+template <class P, class A>
+inline P ghidra_as_param(A &&a) {
+	using B = std::remove_cv_t<std::remove_reference_t<A>>;
+	if constexpr (std::is_same<B, SCell>::value)
+		return (P)(uintptr_t)(char *)&a;
+	else if constexpr (std::is_array<B>::value)
+		return (P)(uintptr_t)(a + 0);
+	else if constexpr (std::is_same<B, GhidraCell>::value || std::is_same<B, AnyPtr>::value ||
+		std::is_same<B, GStruct>::value) {
+		// These types convert to several numeric types. Take the integer value
+		// explicitly so the cast to the parameter is not ambiguous.
+		if constexpr (std::is_pointer<std::remove_reference_t<P>>::value)
+			return (P)(uintptr_t)(unsigned)(int)a;
+		else
+			return (P)(int)a;
+	} else
+		return (P)a;
+}
+
+template <class R>
+inline uintptr_t ghidra_ret_bits(R x) {
+	if constexpr (std::is_pointer<R>::value)
+		return (uintptr_t)x;
+	else if constexpr (std::is_integral<R>::value)
+		return (uintptr_t)x;
+	else if constexpr (std::is_floating_point<R>::value) {
+		float f = (float)x;
+		uint32_t b = 0;
+		std::memcpy(&b, &f, 4);
+		return b;
+	} else
+		return (uintptr_t)(unsigned)(int)x;
+}
+
+// Known functions are called with their compiled signature.
+template <class R, class... P, class... A, std::enable_if_t<sizeof...(P) == sizeof...(A), int> = 0>
+inline uintptr_t ghidra_invoke(R (*fn)(P...), A&&... a) {
+	asm volatile("" : "+r"(fn));
+	if constexpr (std::is_void<R>::value) {
+		fn(ghidra_as_param<P>(a)...);
+		return 0;
+	} else
+		return ghidra_ret_bits(fn(ghidra_as_param<P>(a)...));
+}
+
 // The pointer is hidden from the optimizer so the call stays indirect.
 // A direct call with a mismatched wasm type is rejected by the linker.
+// Engine slots arrive as integers; their real return class is in the note table.
 template <class F, class... A>
 uintptr_t ghidra_invoke(F fn, A&&... a) {
 	uintptr_t target = (uintptr_t)fn;
