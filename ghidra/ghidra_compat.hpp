@@ -619,6 +619,27 @@ inline GStruct::GStruct(const GhidraCell &c) : GStruct() { v = (unsigned)(int)c;
 inline Call GStruct::operator*() const { return Call{v}; }
 inline CodePtr::CodePtr(const GhidraCell &c) : fn((unsigned)(int)c) {}
 
+// An x87 qword. operator float on the one-word cell would read only the low half,
+// which is zero for the doubles this DLL actually uses.
+struct GhidraF64 : GhidraCell {
+	using GhidraCell::operator=;
+	explicit operator float() const {
+		double d = 0;
+		std::memcpy(&d, this, 8);
+		return (float)d;
+	}
+	explicit operator double() const {
+		double d = 0;
+		std::memcpy(&d, this, 8);
+		return d;
+	}
+	explicit operator long double() const {
+		double d = 0;
+		std::memcpy(&d, this, 8);
+		return (long double)d;
+	}
+};
+
 struct SCell {
 	char c;
 	operator char *() const { return (char *)this; }

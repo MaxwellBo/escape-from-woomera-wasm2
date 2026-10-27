@@ -549,13 +549,58 @@ def collect_symbols(texts):
     return syms
 
 
-def write_symbols(path, syms, image_len):
+def x87_qword_addrs(dll):
+    """Addresses the x87 code loads or stores as 8-byte floats."""
+    data = dll.read_bytes()
+    e = struct.unpack_from("<I", data, 0x3C)[0]
+    nsec = struct.unpack_from("<H", data, e + 6)[0]
+    opt = struct.unpack_from("<H", data, e + 20)[0]
+    sec = e + 24 + opt
+    sections = []
+    text = b""
+    for i in range(nsec):
+        o = sec + i * 40
+        name = data[o:o + 8].split(b"\x00", 1)[0]
+        vsize, va, rawsize, raw = struct.unpack_from("<IIII", data, o + 8)
+        sections.append((name, va, vsize))
+        if name == b".text":
+            text = data[raw:raw + rawsize]
+    def in_data(addr):
+        off = addr - 0x10000000
+        for name, va, vsize in sections:
+            if name in (b".rdata", b".data") and va <= off < va + vsize:
+                return True
+        return False
+    found = set()
+    i = 0
+    while i + 6 <= len(text):
+        op = text[i]
+        modrm = text[i + 1]
+        if op in (0xD8, 0xD9, 0xDC, 0xDD) and (modrm >> 6) == 0 and (modrm & 7) == 5:
+            reg = (modrm >> 3) & 7
+            if op in (0xDC, 0xDD) and (op == 0xDC or reg in (0, 2, 3)):
+                addr = struct.unpack_from("<I", text, i + 2)[0]
+                if in_data(addr):
+                    found.add(addr)
+            i += 6
+            continue
+        i += 1
+    return found
+
+
+def write_symbols(path, syms, image_len, qword_addrs=()):
     lines = ["#pragma once", '#include "ghidra_compat.hpp"', ""]
+    qword_addrs = set(qword_addrs)
     for name, (kind, addr) in sorted(syms.items(), key=lambda kv: kv[1][1]):
         off = addr - 0x10000000
         if off < 0 or off >= image_len:
             off = 0
-        cell = "SCell" if kind == "s_" else "GhidraCell"
+        if kind == "s_":
+            cell = "SCell"
+        elif addr in qword_addrs:
+            cell = "GhidraF64"
+        else:
+            cell = "GhidraCell"
         lines.append(f"#define {name} GH_CELL(0x{addr:X}, {cell})")
     path.write_text("\n".join(lines) + "\n")
 
@@ -1580,7 +1625,7 @@ def prepare(side, dll, limit, target="host"):
     order = [text for _, _, text, _, _, _ in units]
     image = load_dll(dll)
     syms = collect_symbols(order)
-    write_symbols(out / "ghidra_syms.hpp", syms, len(image))
+    write_symbols(out / "ghidra_syms.hpp", syms, len(image), x87_qword_addrs(dll))
     types = collect_types(order, functions)
     types = [t for t in types if t not in functions and t not in syms]
     write_types(out / "ghidra_types.hpp", types)
