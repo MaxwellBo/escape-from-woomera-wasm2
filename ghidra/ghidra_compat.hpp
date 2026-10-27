@@ -35,7 +35,7 @@ struct Call;
 struct GhidraCell;
 
 template <class F, class... A>
-uintptr_t ghidra_invoke(F fn, A... a);
+uintptr_t ghidra_invoke(F fn, A&&... a);
 
 // Listings spell a function pointer `code *`. The compiler rewrites that to
 // CodePtr so the pointer value itself is what gets called.
@@ -58,9 +58,8 @@ struct CodePtr {
 	template <class R, class... A>
 	bool operator!=(R (*p)(A...)) const { return fn != (uintptr_t)p; }
 	template <class... A>
-	uintptr_t operator()(A... a) const {
-		using Fn = uintptr_t (*)(A...);
-		return ghidra_invoke(reinterpret_cast<Fn>(fn), a...);
+	uintptr_t operator()(A&&... a) const {
+		return ghidra_invoke(fn, static_cast<A&&>(a)...);
 	}
 	const CodePtr &operator*() const { return *this; }
 	explicit operator int() const { return (int)fn; }
@@ -77,33 +76,8 @@ GhidraRet ghidra_engine_ret(uintptr_t fn);
 inline GhidraRet ghidra_engine_ret(uintptr_t) { return GhidraRet::I32; }
 #endif
 
-// The pointer is hidden from the optimizer so the call stays indirect.
-// A direct call with a mismatched wasm type is rejected by the linker.
-template <class F, class... A>
-uintptr_t ghidra_invoke(F fn, A... a) {
-	uintptr_t target = (uintptr_t)fn;
-	GhidraRet ret = ghidra_engine_ret(target);
-	if (ret == GhidraRet::F32) {
-		using Fn = float (*)(A...);
-		Fn p = reinterpret_cast<Fn>(fn);
-		asm volatile("" : "+r"(p));
-		float x = p(a...);
-		uint32_t bits = 0;
-		std::memcpy(&bits, &x, 4);
-		return bits;
-	}
-	if (ret == GhidraRet::VOID) {
-		using Fn = void (*)(A...);
-		Fn p = reinterpret_cast<Fn>(fn);
-		asm volatile("" : "+r"(p));
-		p(a...);
-		return 0;
-	}
-	using Fn = uintptr_t (*)(A...);
-	Fn p = reinterpret_cast<Fn>(fn);
-	asm volatile("" : "+r"(p));
-	return p(a...);
-}
+// Defined after SCell. A string symbol has to decay to its address before the
+// argument is copied; copying the one-byte cell passes that byte as the pointer.
 
 // The engine dlsyms these names. The recovered bodies keep the _impl names.
 #ifdef GHIDRA_WASM
@@ -405,9 +379,8 @@ struct Call {
 	template <class T, class = std::enable_if_t<std::is_integral<T>::value>>
 	friend unsigned operator<<(T a, const Call &c) { return (unsigned)a << ((unsigned)c.fn & 31); }
 	template <class... A>
-	uintptr_t operator()(A... a) const {
-		using Fn = uintptr_t (*)(A...);
-		return ghidra_invoke(reinterpret_cast<Fn>(fn), a...);
+	uintptr_t operator()(A&&... a) const {
+		return ghidra_invoke(fn, static_cast<A&&>(a)...);
 	}
 };
 
@@ -475,9 +448,8 @@ struct CellLvalue {
 	template <class T>
 	CellLvalue &operator=(T v);
 	template <class... A>
-	uintptr_t operator()(A... a) const {
-		using Fn = uintptr_t (*)(A...);
-		return ghidra_invoke(reinterpret_cast<Fn>((uintptr_t)bits()), a...);
+	uintptr_t operator()(A&&... a) const {
+		return ghidra_invoke((uintptr_t)bits(), static_cast<A&&>(a)...);
 	}
 };
 
@@ -656,6 +628,49 @@ struct SCell {
 	char *operator+(T n) const { return (char *)this + (ptrdiff_t)n; }
 	AnyPtr operator&() { return AnyPtr{(void *)this}; }
 };
+
+// A string symbol passed to an indirect call must be its address. Copying the
+// one-byte cell makes the callee see that byte (`'l'`) as the pointer.
+template <class T>
+inline auto ghidra_call_arg(T &x) -> std::enable_if_t<std::is_same<std::remove_cv_t<T>, SCell>::value, char *> {
+	return (char *)&x;
+}
+template <class T>
+inline auto ghidra_call_arg(T &x) -> std::enable_if_t<!std::is_same<std::remove_cv_t<T>, SCell>::value, T &> {
+	return x;
+}
+template <class T>
+std::remove_reference_t<T> &ghidra_lval();
+template <class T>
+using ghidra_arg_t = std::remove_reference_t<decltype(ghidra_call_arg(ghidra_lval<T>()))>;
+
+// The pointer is hidden from the optimizer so the call stays indirect.
+// A direct call with a mismatched wasm type is rejected by the linker.
+template <class F, class... A>
+uintptr_t ghidra_invoke(F fn, A&&... a) {
+	uintptr_t target = (uintptr_t)fn;
+	GhidraRet ret = ghidra_engine_ret(target);
+	if (ret == GhidraRet::F32) {
+		using Fn = float (*)(ghidra_arg_t<A>...);
+		Fn p = reinterpret_cast<Fn>(fn);
+		asm volatile("" : "+r"(p));
+		float x = p(ghidra_call_arg(a)...);
+		uint32_t bits = 0;
+		std::memcpy(&bits, &x, 4);
+		return bits;
+	}
+	if (ret == GhidraRet::VOID) {
+		using Fn = void (*)(ghidra_arg_t<A>...);
+		Fn p = reinterpret_cast<Fn>(fn);
+		asm volatile("" : "+r"(p));
+		p(ghidra_call_arg(a)...);
+		return 0;
+	}
+	using Fn = uintptr_t (*)(ghidra_arg_t<A>...);
+	Fn p = reinterpret_cast<Fn>(fn);
+	asm volatile("" : "+r"(p));
+	return p(ghidra_call_arg(a)...);
+}
 
 // Each side module exports its data. The same symbol name would make the
 // client's loads resolve to the server image, which is already relocated.
