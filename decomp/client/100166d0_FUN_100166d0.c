@@ -26,7 +26,7 @@ undefined4 __fastcall FUN_100166d0(int *param_1)
   (*DAT_100a5034)(s_cancelselect_10077ea4,&LAB_100166a0);
   (*DAT_100a5034)(s_invnext_10077e9c,&LAB_100166b0);
   (*DAT_100a5034)(s_invprev_10077e94,&LAB_100166c0);
-  (**(code **)(*param_1 + 0x14))();
+  (**(code **)(*param_1 + 0x14))(param_1);
   (*DAT_100a5028)(s_hud_drawhistory_time_10077e78,&DAT_10077e90,0);
   (*DAT_100a5028)(s_hud_fastswitch_10077e68,&DAT_100779f0,1);
   param_1[4] = param_1[4] | 1;
