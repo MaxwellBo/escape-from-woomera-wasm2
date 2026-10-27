@@ -968,47 +968,114 @@ inline uintptr_t ghidra_addr(T x) {
 		return (uintptr_t)(uint32_t)(int)x;
 }
 
+// A cell's only implicit conversion is to int. `float <= cell` would therefore
+// read the dword as an integer (2.0f becomes 1073741824) and a fill loop would
+// never finish. Float arithmetic has the same problem. Read 4-byte cells as
+// float bits, and x87 qwords as the full double, when the other operand is floating.
+template <class C>
+inline constexpr bool ghidra_is_numcell =
+	std::is_same<std::decay_t<C>, GhidraCell>::value ||
+	std::is_same<std::decay_t<C>, GhidraF64>::value ||
+	std::is_same<std::decay_t<C>, CellLvalue>::value;
+
+template <class T, class C>
+inline T ghidra_num(C c) {
+	using D = std::decay_t<C>;
+	if constexpr (std::is_same<D, GhidraF64>::value)
+		return static_cast<T>(c);
+	else if constexpr (std::is_same<D, GhidraCell>::value || std::is_same<D, CellLvalue>::value)
+		return static_cast<T>(static_cast<float>(c));
+	else
+		return static_cast<T>(c);
+}
+
+template <class T, class C,
+	std::enable_if_t<std::is_floating_point<std::decay_t<T>>::value && ghidra_is_numcell<C>, int> = 0>
+inline auto operator+(T a, const C &b) {
+	return a + ghidra_num<std::decay_t<T>>(b);
+}
+template <class T, class C,
+	std::enable_if_t<std::is_floating_point<std::decay_t<T>>::value && ghidra_is_numcell<C>, int> = 0>
+inline auto operator+(const C &a, T b) {
+	return ghidra_num<std::decay_t<T>>(a) + b;
+}
+template <class T, class C,
+	std::enable_if_t<std::is_floating_point<std::decay_t<T>>::value && ghidra_is_numcell<C>, int> = 0>
+inline auto operator-(T a, const C &b) {
+	return a - ghidra_num<std::decay_t<T>>(b);
+}
+template <class T, class C,
+	std::enable_if_t<std::is_floating_point<std::decay_t<T>>::value && ghidra_is_numcell<C>, int> = 0>
+inline auto operator-(const C &a, T b) {
+	return ghidra_num<std::decay_t<T>>(a) - b;
+}
+template <class T, class C,
+	std::enable_if_t<std::is_floating_point<std::decay_t<T>>::value && ghidra_is_numcell<C>, int> = 0>
+inline auto operator*(T a, const C &b) {
+	return a * ghidra_num<std::decay_t<T>>(b);
+}
+template <class T, class C,
+	std::enable_if_t<std::is_floating_point<std::decay_t<T>>::value && ghidra_is_numcell<C>, int> = 0>
+inline auto operator*(const C &a, T b) {
+	return ghidra_num<std::decay_t<T>>(a) * b;
+}
+template <class T, class C,
+	std::enable_if_t<std::is_floating_point<std::decay_t<T>>::value && ghidra_is_numcell<C>, int> = 0>
+inline auto operator/(T a, const C &b) {
+	return a / ghidra_num<std::decay_t<T>>(b);
+}
+template <class T, class C,
+	std::enable_if_t<std::is_floating_point<std::decay_t<T>>::value && ghidra_is_numcell<C>, int> = 0>
+inline auto operator/(const C &a, T b) {
+	return ghidra_num<std::decay_t<T>>(a) / b;
+}
+
+template <class A, class B, class Pred>
+inline bool ghidra_rel(A a, B b, Pred pred) {
+	using DA = std::decay_t<A>;
+	using DB = std::decay_t<B>;
+	constexpr bool ptr = std::is_pointer<DA>::value || std::is_pointer<DB>::value;
+	constexpr bool f64 = std::is_same<DA, GhidraF64>::value || std::is_same<DB, GhidraF64>::value;
+	constexpr bool cell = ghidra_is_numcell<DA> || ghidra_is_numcell<DB>;
+	constexpr bool flt = std::is_floating_point<DA>::value || std::is_floating_point<DB>::value;
+	if constexpr (ptr)
+		return pred(ghidra_addr(a), ghidra_addr(b));
+	else if constexpr (f64 && flt)
+		return pred(ghidra_num<double>(a), ghidra_num<double>(b));
+	else if constexpr (cell && flt) {
+		if constexpr (std::is_same<DA, long double>::value || std::is_same<DB, long double>::value)
+			return pred(ghidra_num<long double>(a), ghidra_num<long double>(b));
+		else if constexpr (std::is_same<DA, double>::value || std::is_same<DB, double>::value)
+			return pred(ghidra_num<double>(a), ghidra_num<double>(b));
+		else
+			return pred(ghidra_num<float>(a), ghidra_num<float>(b));
+	} else
+		return pred(a, b);
+}
+
 template <class A, class B>
 inline bool ghidra_lt(A a, B b) {
-	if constexpr (std::is_pointer<A>::value || std::is_pointer<B>::value)
-		return ghidra_addr(a) < ghidra_addr(b);
-	else
-		return a < b;
+	return ghidra_rel(a, b, [](auto x, auto y) { return x < y; });
 }
 template <class A, class B>
 inline bool ghidra_gt(A a, B b) {
-	if constexpr (std::is_pointer<A>::value || std::is_pointer<B>::value)
-		return ghidra_addr(a) > ghidra_addr(b);
-	else
-		return a > b;
+	return ghidra_rel(a, b, [](auto x, auto y) { return x > y; });
 }
 template <class A, class B>
 inline bool ghidra_le(A a, B b) {
-	if constexpr (std::is_pointer<A>::value || std::is_pointer<B>::value)
-		return ghidra_addr(a) <= ghidra_addr(b);
-	else
-		return a <= b;
+	return ghidra_rel(a, b, [](auto x, auto y) { return x <= y; });
 }
 template <class A, class B>
 inline bool ghidra_ge(A a, B b) {
-	if constexpr (std::is_pointer<A>::value || std::is_pointer<B>::value)
-		return ghidra_addr(a) >= ghidra_addr(b);
-	else
-		return a >= b;
+	return ghidra_rel(a, b, [](auto x, auto y) { return x >= y; });
 }
 template <class A, class B>
 inline bool ghidra_eq(A a, B b) {
-	if constexpr (std::is_pointer<A>::value || std::is_pointer<B>::value)
-		return ghidra_addr(a) == ghidra_addr(b);
-	else
-		return a == b;
+	return ghidra_rel(a, b, [](auto x, auto y) { return x == y; });
 }
 template <class A, class B>
 inline bool ghidra_ne(A a, B b) {
-	if constexpr (std::is_pointer<A>::value || std::is_pointer<B>::value)
-		return ghidra_addr(a) != ghidra_addr(b);
-	else
-		return a != b;
+	return ghidra_rel(a, b, [](auto x, auto y) { return x != y; });
 }
 
 template <class T>
