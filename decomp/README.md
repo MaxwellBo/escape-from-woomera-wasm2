@@ -1,6 +1,6 @@
 # Decompiled binaries
 
-These listings are Ghidra 12.1.4 output from Escape from Woomera v0.84 (`EscapeFromWoomera.dll` and `client.dll`). They are analysis output, not the original source, and the browser does not compile them. `engine/efw/` is the structured port that links against Spirit of Half-Life 1.2.
+These listings are Ghidra 12.1.4 output from Escape from Woomera v0.84 (`EscapeFromWoomera.dll` and `client.dll`). They are analysis output. `scripts/compile_ghidra.py` compiles each function with g++ into a host static library. The browser still links Spirit of Half-Life 1.2 plus `engine/efw/`.
 
 Each file is one function, named `VA_symbol.c`.
 
@@ -15,3 +15,5 @@ Two CRT floating-point helpers hit a Ghidra decompiler error (`Overlapping input
 
 - `server/100c8ae2_FUN_100c8ae2.c`
 - `client/1004b2c2_FUN_1004b2c2.c`
+
+`python3 scripts/compile_ghidra.py --side both` rewrites those listings against `ghidra/ghidra_compat.hpp` and compiles them as C++17. A full run produces `build/ghidra/server/libefw_ghidra_server.a` (5104 functions plus the DLL image) and `build/ghidra/client/libefw_ghidra_client.a` (3011 functions plus the DLL image). The two disassembly files above are skipped and replaced with a stub so their callers still compile. `build/` is generated and stays out of git. The objects are a host compile of the recovered C. They are not the WebAssembly game DLL.
