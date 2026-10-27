@@ -487,12 +487,17 @@ struct GhidraCell {
 	// cell lets the compiler drop the rest of a memcpy and read stack garbage.
 	unsigned char raw[8];
 	AnyPtr operator&() { return AnyPtr{this}; }
-	// Template so clang treats the address add as an exact match. One operator+(int)
-	// ties the built-in add once GStruct is constructible from a cell.
+	// `DAT + n` is the stored pointer plus n (`mov eax, [DAT]; lea eax, [eax+n]`).
+	// The address of the symbol is `&DAT + n`. A template is an exact match for
+	// every integer width; one operator+(int) ties the built-in add.
 	template <class T, class = std::enable_if_t<std::is_integral<T>::value>>
-	AnyPtr operator+(T n) const { return AnyPtr{(char *)this + (ptrdiff_t)n}; }
+	AnyPtr operator+(T n) const {
+		return AnyPtr{(void *)(uintptr_t)(uint32_t)((unsigned)(int)*this + (unsigned)(uint32_t)n)};
+	}
 	template <class T, class = std::enable_if_t<std::is_integral<T>::value>>
-	AnyPtr operator-(T n) const { return AnyPtr{(char *)this - (ptrdiff_t)n}; }
+	AnyPtr operator-(T n) const {
+		return AnyPtr{(void *)(uintptr_t)(uint32_t)((unsigned)(int)*this - (unsigned)(uint32_t)n)};
+	}
 	GhidraCell &operator[](intptr_t i) {
 		return *reinterpret_cast<GhidraCell *>((uintptr_t)this + (uintptr_t)i);
 	}
