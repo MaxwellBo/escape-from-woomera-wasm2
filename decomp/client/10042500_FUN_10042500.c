@@ -1,5 +1,5 @@
 
-void __thiscall FUN_10042500(void *this,undefined4 *param_1,int *param_2)
+undefined4 * __thiscall FUN_10042500(void *this,undefined4 *param_1,int *param_2)
 
 {
   int *this_00;
@@ -32,7 +32,7 @@ void __thiscall FUN_10042500(void *this,undefined4 *param_1,int *param_2)
     puVar2 = (undefined4 *)FUN_10043100(this,&local_4,(int)piVar3,piVar4,(undefined1 *)this_00);
     *param_1 = *puVar2;
     *(undefined1 *)(param_1 + 1) = 1;
-    return;
+    return param_1;
   }
   param_2 = piVar4;
   if (bVar5) {
@@ -40,7 +40,7 @@ void __thiscall FUN_10042500(void *this,undefined4 *param_1,int *param_2)
       puVar2 = (undefined4 *)FUN_10043100(this,&local_4,(int)piVar3,piVar4,(undefined1 *)this_00);
       *param_1 = *puVar2;
       *(undefined1 *)(param_1 + 1) = 1;
-      return;
+      return param_1;
     }
     FUN_10043370((int *)&param_2);
   }
@@ -49,10 +49,10 @@ void __thiscall FUN_10042500(void *this,undefined4 *param_1,int *param_2)
     puVar2 = (undefined4 *)FUN_10043100(this,&local_4,(int)piVar3,piVar4,(undefined1 *)this_00);
     *param_1 = *puVar2;
     *(undefined1 *)(param_1 + 1) = 1;
-    return;
+    return param_1;
   }
   *param_1 = param_2;
   *(undefined1 *)(param_1 + 1) = 0;
-  return;
+  return param_1;
 }
 

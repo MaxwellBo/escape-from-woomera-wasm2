@@ -1,5 +1,5 @@
 
-void __thiscall
+undefined4 * __thiscall
 FUN_10043100(void *this,undefined4 *param_1,int param_2,int *param_3,undefined1 *param_4)
 
 {
@@ -162,6 +162,6 @@ LAB_10043342:
   }
   *(undefined4 *)(*(int *)(*(int *)((int)this + 4) + 4) + 0x2c) = 1;
   *param_1 = piVar3;
-  return;
+  return param_1;
 }
 
