@@ -1,0 +1,25 @@
+
+void __cdecl FUN_10018e30(int param_1,int param_2)
+
+{
+  undefined4 uVar1;
+  int *piVar2;
+  
+  if (param_1 == 0) {
+    piVar2 = (int *)0x0;
+  }
+  else {
+    piVar2 = *(int **)(param_1 + 0x7c);
+  }
+  if (param_2 == 0) {
+    uVar1 = 0;
+  }
+  else {
+    uVar1 = *(undefined4 *)(param_2 + 0x7c);
+  }
+  if (piVar2 != (int *)0x0) {
+    (**(code **)(*piVar2 + 0xe8))(uVar1);
+  }
+  return;
+}
+

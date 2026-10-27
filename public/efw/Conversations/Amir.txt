@@ -1,0 +1,43 @@
+
+Q<GREET FirstTime>: Amir, how are you?
+A: I try so hard to keep my hopes alive, not only for myself, but as an example to others. But it isn't easy when you've been here as long as I have. [AddTopic(GREET_AMIR_SUBSEQUENT)]
+#Q: How long have you been here? 
+ A: I started to lose track after the first six months. All that time I was patient. But gradually, you start to lose your mind. There is nothing to do here, nothing to keep mind or body occupied.
+#Q: Has something happened?
+ A: I just found out that a lawyer came a few days ago, to talk about my case. But the staff lied to him, said I didn't want to see him, and he went away. This will reflect badly on my hearing. Why did they do that? Why don't they want me to get a fair hearing in court?
+
+Q<GREET_AMIR_SUBSEQUENT>: Amir, how are you?
+A: Just surviving, my friend. Just surviving.
+
+Q<ESCAPE>: I must escape; I can't stand it anymore.
+A<FirstTime>: I feel the same, Mustafa my friend. That's why I have started to organise an escape group. If you can bring me something that will cut wire quickly, like a pair of pliers, I may be able to help you. [AddTopic(PLIERS) AddDiary(2)]
+A<!FirstTime>: There is nothing more to say, my friend. Bring me the pliers and we will talk further.
+
+
+Q<PLIERS>: About those pliers you wanted...?
+A: In order to escape, we must all perform our tasks. Yours is to find some pliers and bring them to me.
+
+Q<ELECTRICIAN>: I heard a rumour about an electrician working here. Perhaps he would have some pliers?
+A: It's possible. Try asking some of the others, they may be able to help.
+
+Q<KITCHEN>: What can you tell me about the kitchens? 
+A: I hardly eat breakfast anymore. They've served the same food every day for months.
+
+Q<WORK>: I was thinking of working in the kitchens...
+A: You must go to the main compound and get your name put on the roster.[AddDiary(5)]
+
+Q<OFFICE>: I have to go to the office. 
+A: Last time I went there, I was hoping for mail. Instead, they told me that my hearing has been delayed yet again.
+
+Q<HIDING>: Do you know anywhere I could hide?
+A: There are rumours of places to conceal yourself, but I don't know if they’re true.
+
+Q<IDTAG>: Would you remove my ID tag while I’m in the main compound, to make it look as if I'm not there?
+A: Sorry, but as leader of the escape group, I cannot risk being caught doing that.
+
+Q<GOODBYE>: Goodbye
+A:[Goodbye]
+
+UNWANTED_ITEM
+A<FirstTime>: Keep it, my friend. It may be useful to you later.
+A<!FirstTime>: Keep it for yourself.

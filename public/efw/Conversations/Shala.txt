@@ -1,0 +1,40 @@
+
+Q<GREET>: Hello Shala.
+A: Oh Mustafa, I wish the UN would come more often.
+#Q: I wasn't here back then. What did they do?
+ A: It wasn't so much what they did, as what our captors did to make the place look more positive in the weeks before their arrival. For a short time, they even treated our children better.
+##Q: What changes did they make?
+  A: They repainted all the accomodation units, laid down colorful fake grass on the bare earth, and planted hundreds of trees. All so they could say, "Look! This place isn't nearly so bad as everyone thinks!"
+##Q: What happened to the children?
+  A: For the first time since they were locked up, they were taken outside the camp for an excursion. This was the only activity available to them for months! And we were all called by our real names for the first time. It's dehumanising enough for us, but imagine how it must feel for the children, addressed as just a number every day.
+#Q: The UN can't help us. From what I've heard, they compile reports and say that incarcerating us like this is wrong, but what changes? Nothing.
+ A: That is true, but at least while they are here we are treated better by the guards, given better food, treated less like animals.
+
+
+Q<ESCAPE>: Shala, I have to escape from here. I can't stand it anymore.
+A: What is the use of escaping? Even if you did somehow succeed, they will only find you and bring you back, and things will be even worse.
+
+
+Q<PLIERS>: I’m looking for a pair of pliers.
+A: Pliers? It's strange you should mention that. One of the kitchen workers, Fashid, mentioned an electrician doing repairs in the kitchens recently. Perhaps you could try looking in there? [AddTopic(ELECTRICIAN) AddTopic(KITCHEN) AddDiary(3)]
+
+
+Q<ELECTRICIAN>: What can you tell me about the electrician in the kitchen?
+A: All I only know is that he's doing some repair work.
+
+
+Q<OFFICE>: I'm supposed to go to the office.
+A: What are you waiting for? Go, before you get into trouble!
+
+
+Q<IDTAG>: Would you remove my ID tag while I’m in the main compound?
+A: I would like to help, Mustafa, but it is too risky.
+
+Q<GOODBYE>: Goodbye
+A:[Goodbye]
+
+UNWANTED_ITEM
+A<FirstTime>: Thanks Mustafa, but I don't want it.
+A<!FirstTime>: No thanks.
+
+

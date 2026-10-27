@@ -1,0 +1,22 @@
+
+Q<GREET>: Hello.
+A: I don't have time to waste on chit-chat.
+
+Q<KITCHEN>: Can you tell me about the kitchens? 
+A: Sigh... As you should know by now, detainees can work in the kitchens, but only if they’re on my roster. [AddTopic(WORK) DeleteTopic(KITCHEN) ServerCommand(efw_TriggerMailPickupMessage) AddDiary(4)]
+
+Q<WORK>: How do I get work in the kitchens?
+A<FirstTime>: You want to work? Well alright, I’ll put you on the roster. [DeleteTopic(WORK) AddTopic(OnKitchenRoster)]
+
+A<!FirstTime>: What are you, stupid? You’re already on the roster.
+
+Q<OFFICE>: I'm supposed to report to the office.
+A: RAR-124, isn't it? I don't want to see you. Try another officer.
+
+Q<GOODBYE>: Goodbye
+A:[Goodbye]
+
+UNWANTED_ITEM
+A<FirstTime>: Don't waste my time.
+A<!FirstTime>: I don't want anything from the likes of you.
+

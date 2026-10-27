@@ -1,0 +1,32 @@
+
+Q<GREET>: How are you, Nasir?
+A: Not so good, Mustafa. A boy in my sleeping quarters was taken to hospital; he drank a whole bottle of shampoo. He was only eleven years old, but that's what this place does to you. I am thankful I have no children, I could not bear to see my own flesh and blood treated the way we are here.
+
+Q<ESCAPE>: I must escape from this place.
+A: Even if you could escape, where could you go?
+
+Q<PLIERS>: I’m looking for a pair of pliers.
+A: The electrician working here might have a pair.
+
+Q<PLIERS_GOT_PLIERS>: I've taken these pliers...
+A: You'll have to hide them somewhere in here, or the guard will find them when you leave.
+
+Q<ELECTRICIAN>: Tell me about the electrician working here.
+A: You’ll find him in the other room.
+
+Q<KITCHEN>: Do you like working in the kitchens? 
+A: Before I was locked away, I was a cook back in Iran. It seemed natural to spend my time here.
+
+Q<HIDING>: Do you know anywhere I could hide?
+A: There is nowhere to hide.
+
+Q<BINS>: Can you tell me about the bins?
+A: The bins are Mouhtaz's duty, go talk to him and leave me alone. [AddDiary(10)] 
+
+Q<GOODBYE>: Goodbye
+A:[Goodbye]
+
+UNWANTED_ITEM
+A<FirstTime>: Thanks, but you keep it.
+A<!FirstTime>: You should keep that.
+

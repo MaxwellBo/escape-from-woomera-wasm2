@@ -1,0 +1,20 @@
+
+Q<GREET>: Hello.
+A: Unless you're here to collect mail, RAR-124, go away.
+
+Q<KITCHEN>: What can you tell me about the kitchens? 
+A: I only deal with mail, RAR-124. You know that.
+
+Q<WORK>: How do I get work in the kitchens?
+A: Nothing to do with me. Try asking another officer.
+
+Q<OFFICE>: I'm RAR-124. I was supposed to come here.
+A: It's your lucky day, RAR-124. There's a package here for you. We had to confiscate a few items. There were photos of your parents, and I'm afraid they're against the rules here, so they've already been destroyed. Don't look so upset, they're only pictures. Anyway, here's your parcel. [ServerCommand(efw_GetPackage) DeleteTopic(OFFICE) ServerCommand(efw_EndMailPickupMessage) AddDiary(15)]
+
+Q<GOODBYE>: Goodbye
+A:[Goodbye]
+
+UNWANTED_ITEM
+A<FirstTime>: I don't want that.
+A<!FirstTime>: You can't bribe me.
+

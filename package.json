@@ -1,0 +1,18 @@
+{
+  "name": "escape-from-woomera-wasm2",
+  "private": true,
+  "type": "module",
+  "description": "Escape from Woomera in the browser on Xash3D, with the prototype DLL rebuilt against Spirit of Half-Life.",
+  "scripts": {
+    "test": "node --test",
+    "dev": "vite",
+    "start": "vite",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "xash3d-fwgs": "^1.2.2"
+  },
+  "devDependencies": {
+    "vite": "^8.3.4"
+  }
+}

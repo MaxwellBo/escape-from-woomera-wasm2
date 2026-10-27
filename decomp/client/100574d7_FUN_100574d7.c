@@ -1,0 +1,19 @@
+
+void FUN_100574d7(void)
+
+{
+  exception *this;
+  int unaff_EBP;
+  undefined4 *unaff_FS_OFFSET;
+  
+  FUN_100577a8();
+  *(exception **)(unaff_EBP + -0x10) = this;
+  *(undefined ***)this = &PTR_FUN_10066094;
+  *(undefined4 *)(unaff_EBP + -4) = 0;
+  FUN_100424b0(this + 0xc,'\x01');
+  *(undefined4 *)(unaff_EBP + -4) = 0xffffffff;
+  exception::~exception(this);
+  *unaff_FS_OFFSET = *(undefined4 *)(unaff_EBP + -0xc);
+  return;
+}
+

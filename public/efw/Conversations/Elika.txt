@@ -1,0 +1,33 @@
+
+Q<GREET>: Elika, why do you look so sad?
+A: Oh Mustafa! I was reading from the Koran just before, and one of the guards came up and demanded to look at it. When he finished leafing through the pages, he threw it on the ground instead of giving it back to me.
+#Q: What did you do?
+ A: I was going to complain, but what's the point? These people seem to have no understanding or respect for our religion or culture.
+#Q: That's terrible, but only to be expected in this place.
+ A: Yes, I suppose we should be grateful we are not locked away in Baxter. I have heard that in there, refugees are sometimes not even allowed to observe holy days.
+
+Q<ESCAPE>: I've decided to escape.
+A: I don't know if this is any help to you, but I have heard that someone once hid in this area. He was planning to come out at night and dig a tunnel, but the guards found him and put him in isolation. [AddTopic(HIDING) AddDiary(7)]
+
+Q<KITCHEN>: What can you tell me about the kitchens? 
+A: Only that women are not allowed to work in them. A great pity, as I would love something to do to relieve the monotony of endless days in this place.
+
+Q<OFFICE>: I've been called to the office.
+A: If it's about some mail, make sure they don't steal anything. My sister in Sydney sent a package for the children, but when she got it, the bisuits and chocolate she packed had been 'confiscated.'
+
+Q<HIDING>: Do you know anywhere I could hide?
+A: You should talk to Laleh. She had a friend who was supposed to have once hidden somewhere around here.
+
+Q<IDTAG>: Would you remove my ID tag when I come in this compound?
+A: Sorry, but I am from a different compound, so I cannot enter yours.
+
+Q<BINS>: Can you tell me about the bins?
+A: The only bins I know about are those locked up outside the kitchen. [AddTopic(KITCHEN)]
+
+Q<GOODBYE>: Goodbye
+A:[Goodbye]
+
+UNWANTED_ITEM
+A<FirstTime>: I have no need of that.
+A<!FirstTime>: I don't want that.
+

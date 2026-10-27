@@ -1,0 +1,49 @@
+
+void __fastcall FUN_1008a2b0(int *param_1)
+
+{
+  int iVar1;
+  char *pcVar2;
+  undefined4 uVar3;
+  undefined4 uStack_18;
+  undefined4 uStack_14;
+  undefined4 uStack_10;
+  undefined4 uStack_c;
+  undefined4 uStack_8;
+  undefined4 uStack_4;
+  
+  (**(code **)(*param_1 + 0x2c))();
+  iVar1 = param_1[1];
+  if (*(int *)(iVar1 + 0xb8) == 0) {
+    uVar3 = *(undefined4 *)(iVar1 + 0x208);
+    pcVar2 = s_models_bigrat_mdl_10115410;
+  }
+  else {
+    uVar3 = *(undefined4 *)(iVar1 + 0x208);
+    pcVar2 = (char *)(*(int *)(DAT_10122044 + 0x98) + *(int *)(iVar1 + 0xb8));
+  }
+  (*DAT_10121e10)(uVar3,pcVar2);
+  uStack_18 = 0;
+  uStack_14 = 0;
+  uStack_10 = 0;
+  uStack_c = 0;
+  uStack_8 = 0;
+  uStack_4 = 0;
+  FUN_100afdc0(param_1[1],&uStack_c,&uStack_18);
+  uStack_18 = 0;
+  uStack_14 = 0;
+  uStack_10 = 0x40c00000;
+  *(undefined4 *)(param_1[1] + 0x10c) = 3;
+  *(undefined4 *)(param_1[1] + 0x108) = 4;
+  param_1[0xb4] = 0xf7;
+  *(undefined4 *)(param_1[1] + 0x160) = 0x41000000;
+  iVar1 = param_1[1];
+  *(undefined4 *)(iVar1 + 0x174) = 0;
+  *(undefined4 *)(iVar1 + 0x178) = 0;
+  *(undefined4 *)(iVar1 + 0x17c) = 0x40c00000;
+  param_1[0x70] = 0x3f000000;
+  param_1[0x76] = 0;
+  (**(code **)(*param_1 + 0x134))();
+  return;
+}
+

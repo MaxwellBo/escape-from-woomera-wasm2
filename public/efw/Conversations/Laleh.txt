@@ -1,0 +1,35 @@
+
+Q<GREET>: How are you, Laleh?
+A: How do you think I am? My husband was taken away, transferred to another camp, but I don't know where.
+#Q: What? When did this happen?
+ A: Over a week ago. They came for him in the middle of the night. Came right into our hut, shone bright lights in our eyes, took him and several other men away. He is my husband, they knew this, yet we did not even have a chance to say goodbye. Now he's gone and I fear I will never see him again.
+#Q: What did he do to cause this?
+ A: Nothing at all. I think they are doing this to break our spirit, to make us volunteer to go back to our old country. But this is exactly what they do there! They come for you in the night, and then you are never heard of again. I believe they understand this, and play on the pain and fear of our experiences.
+#Q: What do the authorities say?
+ A: All they will tell me is that he has been flown to another state, and refuse to discuss it further. When I try to ask the guards if they have any more information, they just laugh at me.
+
+Q<ESCAPE>: I am going to escape.
+A: I cannot dream of escaping. I must remain here and hope that one day my husband is restored to me.
+
+Q<KITCHEN>: What can you tell me about the kitchens? 
+A: Some men work there to give a sense of purpose. As a woman, I am not allowed to work there.[AddTopic(WORK) DeleteTopic(KITCHEN) ServerCommand(efw_TriggerMailPickupMessage) AddDiary(4)]
+
+Q<OFFICE>: I'm supposed to go to the office.
+A: Every time my number is called, I pray it will be a message from my husband, to tell me that he is alive.
+
+Q<HIDING>: Do you know anywhere I could hide?
+A: There is one place. A man once hid himself away in this compound and got his brother to remove his ID tag from the checkpoint while in here. Because of that, the guards didn’t know he was there. [AddDiary(11) AddTopic(IDTAG)]
+
+Q<IDTAG>: Would you remove my ID tag while I’m in the main compound?
+A: Sorry, but I can’t risk being caught.
+
+Q<BINS>: Do you know anything about the kitchen bins?
+A: They're kept in a cage around the side of the building, but you can't get to them as they're locked up.
+
+Q<GOODBYE>: Goodbye
+A:[Goodbye]
+
+UNWANTED_ITEM
+A<FirstTime>: Very generous, but you keep it.
+A<!FirstTime>: I couldn't possibly accept this.
+

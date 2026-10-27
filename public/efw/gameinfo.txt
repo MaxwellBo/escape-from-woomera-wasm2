@@ -1,0 +1,15 @@
+// Browser port. The server library is the Spirit of Half-Life 1.2 SDK
+// plus the Escape from Woomera entities, built as an Emscripten side module.
+basedir		"valve"
+title		"Escape from Woomera"
+startmap		"efw_prototype_level1"
+version		0.84
+url_info		"http://escapefromwoomera.org"
+type		"Single"
+gamemode		"singleplayer_only"
+max_edicts		4096
+dllpath		"cl_dlls"
+gamedll		"dlls/hl_emscripten_wasm32.wasm"
+gamedll_linux	"dlls/hl_emscripten_wasm32.wasm"
+internal_vgui_support	"1"
+nomodels		"1"

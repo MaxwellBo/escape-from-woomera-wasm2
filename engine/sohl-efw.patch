@@ -1,0 +1,321 @@
+diff --git a/cl_dll/cdll_int.cpp b/cl_dll/cdll_int.cpp
+index 77beeea..52d4342 100644
+--- a/cl_dll/cdll_int.cpp
++++ b/cl_dll/cdll_int.cpp
+@@ -220,11 +220,15 @@ the hud variables.
+ ==========================
+ */
+ 
++void EfwHud_Init();
++void EfwHud_Redraw();
++
+ void DLLEXPORT HUD_Init( void )
+ {
+ 	InitInput();
+ 	gHUD.Init();
+ 	Scheme_Init();
++	EfwHud_Init();
+ }
+ 
+ /*
+@@ -239,6 +243,7 @@ redraw the HUD.
+ int DLLEXPORT HUD_Redraw( float time, int intermission )
+ {
+ 	gHUD.Redraw( time, intermission );
++	EfwHud_Redraw();
+ 
+ 	return 1;
+ }
+@@ -286,7 +291,7 @@ Called by engine every frame that client .dll is loaded
+ 
+ void DLLEXPORT HUD_Frame( double time )
+ {
+-	GetClientVoiceMgr()->Frame(time);
++	(void)time;
+ }
+ 
+ /*
+@@ -299,7 +304,8 @@ Called when a player starts or stops talking.
+ 
+ void DLLEXPORT HUD_VoiceStatus( int entindex, qboolean bTalking )
+ {
+-	GetClientVoiceMgr()->UpdateSpeakerStatus(entindex, bTalking);
++	(void)entindex;
++	(void)bTalking;
+ }
+ 
+ /*
+diff --git a/cl_dll/hud.cpp b/cl_dll/hud.cpp
+index 9b9389b..19163c5 100644
+--- a/cl_dll/hud.cpp
++++ b/cl_dll/hud.cpp
+@@ -70,7 +70,8 @@ public:
+ 
+ 	virtual void UpdateCursorState()
+ 	{
+-		gViewPort->UpdateCursorState();
++		if( gViewPort )
++			gViewPort->UpdateCursorState();
+ 	}
+ 
+ 	virtual int	GetAckIconHeight()
+@@ -443,7 +444,7 @@ void CHud::Init( void )
+ 	m_AmmoSecondary.Init();
+ 	m_TextMessage.Init();
+ 	m_StatusIcons.Init();
+-	GetClientVoiceMgr()->Init(&g_VoiceStatusHelper, (vgui::Panel**)&gViewPort);
++	// Voice labels are VGUI panels. They are not part of this prototype HUD.
+ 
+ 	m_MOTD.Init();
+ 	m_Scoreboard.Init();
+@@ -536,7 +537,14 @@ void CHud::VidInit( void )
+ 		// we need to load the hud.txt, and all sprites within
+ 		m_pSpriteList = pSpriteList;
+ 
+-		if( m_pSpriteList )
++		if( !m_pSpriteList )
++		{
++			m_iSpriteCount = 0;
++			m_rghSprites = NULL;
++			m_rgrcRects = NULL;
++			m_rgszSpriteNames = NULL;
++		}
++		else if( m_pSpriteList )
+ 		{
+ 			// count the number of sprites of the appropriate res
+ 			m_iSpriteCount = 0;
+@@ -618,17 +626,14 @@ void CHud::VidInit( void )
+ 
+ 	if( m_HUD_number_0 == -1 )
+ 	{
+-		const char *msg = "There is something wrong with your game data! Please, reinstall\n";
+-
+-		if( HUD_MessageBox( msg ) )
+-		{
+-			gEngfuncs.pfnClientCmd( "quit\n" );
+-		}
+-
+-		return;
++		// No Valve HUD sheet. The hope meter is drawn with the console font.
++		gEngfuncs.pfnConsolePrint( "EFW: sprites/hud.txt has no number_0; skipping the Half-Life HUD sheet\n" );
++		m_iFontHeight = 16;
++	}
++	else
++	{
++		m_iFontHeight = m_rgrcRects[m_HUD_number_0].bottom - m_rgrcRects[m_HUD_number_0].top;
+ 	}
+-
+-	m_iFontHeight = m_rgrcRects[m_HUD_number_0].bottom - m_rgrcRects[m_HUD_number_0].top;
+ 
+ 	m_Ammo.VidInit();
+ 	m_Health.VidInit();
+@@ -646,7 +651,7 @@ void CHud::VidInit( void )
+ 	m_TextMessage.VidInit();
+ 	m_StatusIcons.VidInit();
+ 	m_Particle.VidInit(); // (LRC) -- 30/08/02 November235: Particles to Order
+-	GetClientVoiceMgr()->VidInit();
++	// Voice VGUI is not initialized.
+ 	m_MOTD.VidInit();
+ 	m_Scoreboard.VidInit();
+ }
+diff --git a/cl_dll/hud.h b/cl_dll/hud.h
+index 35581d0..c7133f1 100644
+--- a/cl_dll/hud.h
++++ b/cl_dll/hud.h
+@@ -642,6 +642,11 @@ public:
+ 
+ 	wrect_t& GetSpriteRect( int index )
+ 	{
++		// The prototype does not ship Valve's hud.txt. Callers still ask
++		// for number_0 and the suit sprites; hand back an empty rect.
++		static wrect_t empty = { 0, 0, 0, 0 };
++		if( index < 0 || !m_rgrcRects || index >= m_iSpriteCount )
++			return empty;
+ 		return m_rgrcRects[index];
+ 	}
+ 
+diff --git a/cl_dll/input.cpp b/cl_dll/input.cpp
+index 0a65b9f..d3b931b 100644
+--- a/cl_dll/input.cpp
++++ b/cl_dll/input.cpp
+@@ -377,8 +377,12 @@ HUD_Key_Event
+ Return 1 to allow engine to process the key, otherwise, act on it as needed
+ ============
+ */
++int EfwHud_Key( int down, int keynum );
++
+ int DLLEXPORT HUD_Key_Event( int down, int keynum, const char *pszCurrentBinding )
+ {
++	if( !EfwHud_Key( down, keynum ) )
++		return 0;
+ 	if (gViewPort)
+ 		return gViewPort->KeyInput(down, keynum, pszCurrentBinding);
+ 	return 1;
+diff --git a/cl_dll/vgui_int.cpp b/cl_dll/vgui_int.cpp
+index ffa101f..04c77af 100644
+--- a/cl_dll/vgui_int.cpp
++++ b/cl_dll/vgui_int.cpp
+@@ -83,6 +83,10 @@ void* VGui_GetPanel()
+ 
+ void VGui_Startup()
+ {
++	// The browser client does not create Team Fortress VGUI. Those panels
++	// share vgui symbols with Xash's menu and the next paint calls a null
++	// virtual. Hope and dialogue are drawn by the engine console font.
++	return;
+ 	Panel *root = (Panel*)VGui_GetPanel();
+ 	root->setBgColor( 128, 128, 0, 0 );
+ 	// root->setNonPainted( false );
+diff --git a/dlls/barney.cpp b/dlls/barney.cpp
+index c541ecd..fd5dfe2 100644
+--- a/dlls/barney.cpp
++++ b/dlls/barney.cpp
+@@ -419,8 +419,10 @@ void CBarney::Spawn()
+ 
+ 	if (pev->model)
+ 		SET_MODEL(ENT(pev), STRING(pev->model)); //LRC
++	else if (!FStringNull(pev->targetname) && !strcmp(STRING(pev->targetname), "efw_electrician"))
++		SET_MODEL(ENT(pev), "models/tradesman.mdl");
+ 	else
+-		SET_MODEL( ENT( pev ), "models/barney.mdl" );
++		SET_MODEL( ENT( pev ), "models/Security.mdl" );
+ 	UTIL_SetSize( pev, VEC_HUMAN_HULL_MIN, VEC_HUMAN_HULL_MAX );
+ 
+ 	pev->solid = SOLID_SLIDEBOX;
+@@ -449,8 +451,10 @@ void CBarney::Precache()
+ {
+ 	if (pev->model)
+ 		PRECACHE_MODEL(STRING(pev->model)); //LRC
++	else if (!FStringNull(pev->targetname) && !strcmp(STRING(pev->targetname), "efw_electrician"))
++		PRECACHE_MODEL("models/tradesman.mdl");
+ 	else
+-		PRECACHE_MODEL( "models/barney.mdl" );
++		PRECACHE_MODEL( "models/Security.mdl" );
+ 
+ 	PRECACHE_SOUND( "barney/ba_attack1.wav" );
+ 	PRECACHE_SOUND( "barney/ba_attack2.wav" );
+diff --git a/dlls/client.cpp b/dlls/client.cpp
+index c51b1dd..4f056f6 100644
+--- a/dlls/client.cpp
++++ b/dlls/client.cpp
+@@ -43,6 +43,8 @@
+ #include "movewith.h"
+ #include "pm_shared.h"
+ 
++#include "efw/efw.h"
++
+ extern DLL_GLOBAL ULONG		g_ulModelIndexPlayer;
+ extern DLL_GLOBAL BOOL		g_fGameOver;
+ extern DLL_GLOBAL int		g_iSkillLevel;
+@@ -625,6 +627,9 @@ void ClientCommand( edict_t *pEntity )
+ 		if( pPlayer->IsObserver() )
+ 			pPlayer->Observer_FindNextPlayer( atoi( CMD_ARGV( 1 ) ) ? true : false );
+ 	}
++	else if( Efw_ClientCommand( pEntity ) )
++	{
++	}
+ 	else if( g_pGameRules->ClientCommand( GetClassPtr( (CBasePlayer *)pev ), pcmd ) )
+ 	{
+ 		// MenuSelect returns true only if the command is properly handled,  so don't print a warning
+@@ -837,6 +842,7 @@ void ParmsChangeLevel( void )
+ //
+ void StartFrame( void )
+ {
++	Efw_StartFrame();
+ 	//ALERT( at_console, "SV_Physics( %g, frametime %g )\n", gpGlobals->time, gpGlobals->frametime );
+ 
+ 	if( g_pGameRules )
+diff --git a/dlls/player.cpp b/dlls/player.cpp
+index 30d167e..d128f23 100644
+--- a/dlls/player.cpp
++++ b/dlls/player.cpp
+@@ -38,6 +38,7 @@
+ #include "hltv.h"
+ #include "effects.h" //LRC
+ #include "movewith.h" //LRC
++#include "efw/efw.h"
+ 
+ // #define DUCKFIX
+ 
+@@ -1680,6 +1681,9 @@ void CBasePlayer::PlayerUse( void )
+ 	if( IsObserver() )
+ 		return;
+ 
++	if( ( m_afButtonPressed & IN_USE ) && Efw_TryUse( this ) )
++		return;
++
+ 	// Was use pressed or released?
+ 	if( !( ( pev->button | m_afButtonPressed | m_afButtonReleased) & IN_USE ) )
+ 		return;
+diff --git a/freevgui/panel.cpp b/freevgui/panel.cpp
+index ebf1eba..8c8500c 100644
+--- a/freevgui/panel.cpp
++++ b/freevgui/panel.cpp
+@@ -601,7 +601,10 @@ void Panel::solveTraverse()
+ 
+ void Panel::paintTraverse()
+ {
+-	paintTraverse( pendingRepaint );
++	// The browser port draws dialogue through the HUD. freevgui's surface
++	// callbacks are not filled in by the engine side module, and walking
++	// them crashes the frame loop.
++	return;
+ }
+ 
+ void Panel::setSurfaceBaseTraverse(SurfaceBase *sb)
+@@ -745,53 +748,8 @@ void Panel::solve()
+ 
+ void Panel::paintTraverse( bool repaint )
+ {
+-	if( visible )
+-	{
+-		if( pendingRepaint )
+-			repaint = true;
+-
+-		pendingRepaint = false;
+-
+-		if( clipRect[2] <= clipRect[0] || clipRect[3] <= clipRect[1] )
+-			repaint = false;
+-
+-		if( repaint && ( paintBorderEnabled || paintBackgroundEnabled || paintEnabled ))
+-		{
+-			surfaceBase->pushMakeCurrent( this, true );
+-
+-			if( border && paintBorderEnabled )
+-				border->doPaint( this );
+-
+-			if( paintBackgroundEnabled )
+-				paintBackground();
+-
+-			if( paintEnabled )
+-				paint();
+-
+-			surfaceBase->popMakeCurrent( this );
+-		}
+-
+-		for( int i = 0; i < children.getCount(); i++ )
+-		{
+-			children[i]->paintTraverse( repaint );
+-		}
+-
+-		if( repaint )
+-		{
+-			if( isBuildGroupEnabled() && hasFocus() )
+-			{
+-				surfaceBase->pushMakeCurrent( this, false );
+-				paintBuildOverlay();
+-				surfaceBase->popMakeCurrent( this );
+-			}
+-		}
+-
+-		if( surfaceBase->pendingSwap && surfaceBase->getPanel() == this )
+-		{
+-			surfaceBase->pendingSwap = false;
+-			surfaceBase->swapBuffers();
+-		}
+-	}
++	(void)repaint;
++	return;
+ }
+ 
+ void Panel::paintBackground()

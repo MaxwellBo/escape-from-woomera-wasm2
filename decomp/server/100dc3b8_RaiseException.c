@@ -1,0 +1,11 @@
+
+void RaiseException(DWORD dwExceptionCode,DWORD dwExceptionFlags,DWORD nNumberOfArguments,
+                   ULONG_PTR *lpArguments)
+
+{
+                    /* WARNING: Could not recover jumptable at 0x100dc3b8. Too many branches */
+                    /* WARNING: Treating indirect jump as call */
+  RaiseException(dwExceptionCode,dwExceptionFlags,nNumberOfArguments,lpArguments);
+  return;
+}
+
