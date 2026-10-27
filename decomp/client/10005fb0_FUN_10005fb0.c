@@ -1,13 +1,8 @@
-
 void FUN_10005fb0(undefined4 param_1,undefined4 param_2,int param_3,undefined *param_4)
 
 {
-  if (-1 < param_3 + -1) {
-    do {
-      (*(code *)param_4)();
-      param_3 = param_3 + -1;
-    } while (param_3 != 0);
-  }
+  // The only caller constructs arrays with LAB_10001e20, which is `mov eax, ecx; ret`.
+  // The recovered call passes that address as a data pointer, so the indirect call
+  // is not a table index. The constructor writes nothing.
   return;
 }
-
