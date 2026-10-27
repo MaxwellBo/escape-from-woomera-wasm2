@@ -1738,8 +1738,11 @@ def load_emsdk():
 
 
 def wasm_compile(cpp, obj, include, opt, defines=()):
+    # Hidden visibility keeps each side module's copy of ghidra_invoke. A default-
+    # visibility inline is exported and imported, so the client would call the
+    # server's copy and look up return classes in the wrong table.
     cmd = [
-        "em++", "-c", "-std=c++17", "-fPIC", "-fpermissive", "-w", "-Wno-c++11-narrowing",
+        "em++", "-c", "-std=c++17", "-fPIC", "-fvisibility=hidden", "-fpermissive", "-w", "-Wno-c++11-narrowing",
         "-DGHIDRA_WASM",
         opt, "-fmax-errors=8",
         "-I", str(include),
@@ -1804,7 +1807,7 @@ def compile_wasm(out, jobs, side):
     return ok, failures
 
 
-def link_wasm(out, dest):
+def link_wasm(out, dest, exports):
     """Link a side module with the engine's native function-pointer types."""
     objs = sorted((out / "obj").glob("*.o"))
     rsp = out / "link.rsp"
@@ -1818,6 +1821,8 @@ def link_wasm(out, dest):
         f"@{rsp}",
         "-o", str(staged),
     ]
+    for name in sorted(exports):
+        cmd.append(f"-Wl,--export-if-defined={name}")
     proc = subprocess.run(cmd, capture_output=True, text=True)
     if proc.returncode != 0:
         staged.unlink(missing_ok=True)
@@ -1897,7 +1902,7 @@ def main():
         dest = WASM_OUT[side]
         print(f"  linking {dest}")
         try:
-            link_wasm(out, dest)
+            link_wasm(out, dest, pe_c_exports(dll))
         except RuntimeError as exc:
             print(exc, file=sys.stderr)
             return 1
