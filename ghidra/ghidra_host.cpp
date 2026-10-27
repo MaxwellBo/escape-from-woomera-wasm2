@@ -107,9 +107,27 @@ static_assert((int)GhidraRet::I32 == 0 && (int)GhidraRet::F32 == 1 && (int)Ghidr
 struct EngRet {
 	uint32_t fn;
 	GhidraRet ret;
+	uint8_t fixed;
 };
 static EngRet g_eng[256];
 static int g_neng;
+
+// Arguments before the ellipsis, counting the format string.
+// Client: Con_Printf, Con_DPrintf, Con_NPrintf, Con_NXPrintf.
+// Server: pfnClientCommand, pfnAlertMessage, pfnEngineFprintf.
+static uint8_t fixed_arg_count(int slot) {
+#ifdef GHIDRA_SERVER
+	if (slot == 41 || slot == 61 || slot == 62)
+		return 2;
+#endif
+#ifdef GHIDRA_CLIENT
+	if (slot == 40 || slot == 41)
+		return 1;
+	if (slot == 42 || slot == 43)
+		return 2;
+#endif
+	return 0;
+}
 
 static void note_engine(const uint32_t *table, int n, const char *kinds) {
 	g_neng = 0;
@@ -122,7 +140,7 @@ static void note_engine(const uint32_t *table, int n, const char *kinds) {
 		else if (kinds[i] == 'v')
 			ret = GhidraRet::VOID;
 		if (g_neng < (int)(sizeof g_eng / sizeof g_eng[0]))
-			g_eng[g_neng++] = EngRet{table[i], ret};
+			g_eng[g_neng++] = EngRet{table[i], ret, fixed_arg_count(i)};
 	}
 }
 
@@ -137,6 +155,98 @@ GhidraRet ghidra_engine_ret(uintptr_t fn) {
 	if (found != g_fnret + g_nfnret && found->fn == f)
 		return (GhidraRet)found->ret;
 	return GhidraRet::I32;
+}
+
+int ghidra_engine_fixed(uintptr_t fn) {
+	uint32_t f = (uint32_t)fn;
+	for (int i = 0; i < g_neng; i++)
+		if (g_eng[i].fn == f)
+			return g_eng[i].fixed;
+	return 0;
+}
+
+// Emscripten varargs are (fixed args..., va_ptr). va_ptr is 0 when the
+// format has no extra arguments. Otherwise it points at a buffer of promoted
+// values: 4-byte slots, with 8-byte values aligned to 8.
+uintptr_t ghidra_call_vararg(void *fn, int ret, int fixed, const GhidraVa *pieces, int n) {
+	if (fixed < 1)
+		fixed = 1;
+	if (fixed > 3)
+		fixed = 3;
+	uint32_t lead[3] = {};
+	for (int i = 0; i < fixed && pieces != nullptr && i < n; i++)
+		lead[i] = pieces[i].lo;
+	alignas(8) unsigned char storage[256];
+	unsigned char *p = storage;
+	unsigned char *end = storage + sizeof storage;
+	bool any = false;
+	for (int i = fixed; pieces != nullptr && i < n; i++) {
+		const GhidraVa &pc = pieces[i];
+		if (pc.kind != 0) {
+			p = (unsigned char *)(((uintptr_t)p + 7u) & ~uintptr_t{7});
+			if (p + 8 > end)
+				break;
+			std::memcpy(p, &pc.lo, 8);
+			p += 8;
+		} else {
+			if (p + 4 > end)
+				break;
+			std::memcpy(p, &pc.lo, 4);
+			p += 4;
+		}
+		any = true;
+	}
+	uint32_t va = any ? (uint32_t)(uintptr_t)storage : 0;
+	if (ret == (int)GhidraRet::F32) {
+		float x = 0;
+		if (fixed == 1) {
+			auto fp = (float (*)(uint32_t, uint32_t))fn;
+			asm volatile("" : "+r"(fp));
+			x = fp(lead[0], va);
+		} else if (fixed == 2) {
+			auto fp = (float (*)(uint32_t, uint32_t, uint32_t))fn;
+			asm volatile("" : "+r"(fp));
+			x = fp(lead[0], lead[1], va);
+		} else {
+			auto fp = (float (*)(uint32_t, uint32_t, uint32_t, uint32_t))fn;
+			asm volatile("" : "+r"(fp));
+			x = fp(lead[0], lead[1], lead[2], va);
+		}
+		uint32_t bits = 0;
+		std::memcpy(&bits, &x, 4);
+		return bits;
+	}
+	if (ret == (int)GhidraRet::VOID) {
+		if (fixed == 1) {
+			auto fp = (void (*)(uint32_t, uint32_t))fn;
+			asm volatile("" : "+r"(fp));
+			fp(lead[0], va);
+		} else if (fixed == 2) {
+			auto fp = (void (*)(uint32_t, uint32_t, uint32_t))fn;
+			asm volatile("" : "+r"(fp));
+			fp(lead[0], lead[1], va);
+		} else {
+			auto fp = (void (*)(uint32_t, uint32_t, uint32_t, uint32_t))fn;
+			asm volatile("" : "+r"(fp));
+			fp(lead[0], lead[1], lead[2], va);
+		}
+		return 0;
+	}
+	uint32_t x = 0;
+	if (fixed == 1) {
+		auto fp = (uint32_t (*)(uint32_t, uint32_t))fn;
+		asm volatile("" : "+r"(fp));
+		x = fp(lead[0], va);
+	} else if (fixed == 2) {
+		auto fp = (uint32_t (*)(uint32_t, uint32_t, uint32_t))fn;
+		asm volatile("" : "+r"(fp));
+		x = fp(lead[0], lead[1], va);
+	} else {
+		auto fp = (uint32_t (*)(uint32_t, uint32_t, uint32_t, uint32_t))fn;
+		asm volatile("" : "+r"(fp));
+		x = fp(lead[0], lead[1], lead[2], va);
+	}
+	return x;
 }
 
 #ifdef GHIDRA_SERVER

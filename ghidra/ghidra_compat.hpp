@@ -72,6 +72,16 @@ using code = CodePtr;
 enum class GhidraRet : uint8_t { I32, F32, VOID };
 #ifdef GHIDRA_WASM
 GhidraRet ghidra_engine_ret(uintptr_t fn);
+// Fixed arguments before the ellipsis. 0 means the pointer is not variadic.
+int ghidra_engine_fixed(uintptr_t fn);
+// One recovered argument, already promoted the way Emscripten's va_list wants.
+// kind 0 is a 4-byte integer or pointer. kind 1 is an 8-byte double.
+struct GhidraVa {
+	uint32_t lo;
+	uint32_t hi;
+	uint8_t kind;
+};
+uintptr_t ghidra_call_vararg(void *fn, int ret, int fixed, const GhidraVa *pieces, int n);
 #else
 inline GhidraRet ghidra_engine_ret(uintptr_t) { return GhidraRet::I32; }
 #endif
@@ -644,11 +654,60 @@ std::remove_reference_t<T> &ghidra_lval();
 template <class T>
 using ghidra_arg_t = std::remove_reference_t<decltype(ghidra_call_arg(ghidra_lval<T>()))>;
 
+#ifdef GHIDRA_WASM
+// Default argument promotions, then the Emscripten va_list layout: 4-byte
+// scalars packed at 4, 8-byte scalars aligned up to 8. Arrays decay to the
+// address of their first element, which is what a C call would pass.
+template <class T>
+GhidraVa ghidra_to_piece(T &x) {
+	auto &&v = ghidra_call_arg(x);
+	using U = std::remove_cv_t<std::remove_reference_t<decltype(v)>>;
+	GhidraVa p{};
+	if constexpr (std::is_array<U>::value) {
+		p.lo = (uint32_t)(uintptr_t)&v[0];
+	} else if constexpr (std::is_floating_point<U>::value) {
+		double d = (double)v;
+		std::memcpy(&p.lo, &d, 8);
+		p.kind = 1;
+	} else if constexpr (std::is_pointer<U>::value) {
+		p.lo = (uint32_t)(uintptr_t)v;
+	} else if constexpr (std::is_integral<U>::value) {
+		if constexpr (sizeof(U) > 4) {
+			uint64_t b = (uint64_t)v;
+			std::memcpy(&p.lo, &b, 8);
+			p.kind = 1;
+		} else {
+			p.lo = (uint32_t)v;
+		}
+	} else if constexpr (std::is_function<U>::value) {
+		p.lo = (uint32_t)(uintptr_t)&v;
+	} else if constexpr (std::is_convertible<U, int>::value) {
+		p.lo = (uint32_t)(int)v;
+	} else if constexpr (std::is_object<U>::value) {
+		if constexpr (sizeof(U) >= 4 && std::is_trivially_copyable<U>::value)
+			std::memcpy(&p.lo, &v, 4);
+	}
+	return p;
+}
+#endif
+
 // The pointer is hidden from the optimizer so the call stays indirect.
 // A direct call with a mismatched wasm type is rejected by the linker.
 template <class F, class... A>
 uintptr_t ghidra_invoke(F fn, A&&... a) {
 	uintptr_t target = (uintptr_t)fn;
+#ifdef GHIDRA_WASM
+	int fixed = ghidra_engine_fixed(target);
+	if (fixed > 0) {
+		GhidraRet vret = ghidra_engine_ret(target);
+		if constexpr (sizeof...(A) == 0)
+			return ghidra_call_vararg((void *)target, (int)vret, fixed, nullptr, 0);
+		else {
+			GhidraVa pcs[] = {ghidra_to_piece(a)...};
+			return ghidra_call_vararg((void *)target, (int)vret, fixed, pcs, (int)sizeof...(A));
+		}
+	}
+#endif
 	GhidraRet ret = ghidra_engine_ret(target);
 	if (ret == GhidraRet::F32) {
 		using Fn = float (*)(ghidra_arg_t<A>...);
