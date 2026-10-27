@@ -25,6 +25,8 @@ static VaFn g_regs[16384];
 static uint32_t g_nregs;
 static int g_relocated;
 
+static void ghidra_run_cxx_ctors();
+
 void ghidra_register(uint32_t va, void *fn) {
 	if (g_nregs < (uint32_t)(sizeof g_regs / sizeof g_regs[0]))
 		g_regs[g_nregs++] = VaFn{va, fn};
@@ -84,6 +86,72 @@ void ghidra_relocate() {
 	sort_fnret();
 	std::fprintf(stderr, "efw decompiled %s: %u functions, %u relocs patched\n",
 		GHIDRA_SIDE, g_nregs, patched);
+	ghidra_run_cxx_ctors();
+}
+
+// The PE static-initializer table is data. DllMain never runs in a side module,
+// so global objects such as g_HUD keep null vtables until these run.
+static uint32_t ghidra_fn_va(uint32_t bits) {
+	for (uint32_t i = 0; i < g_nregs; i++) {
+		if ((uint32_t)(uintptr_t)g_regs[i].fn == bits)
+			return g_regs[i].va;
+	}
+	return 0;
+}
+
+static bool ghidra_skip_ctor(uint32_t va) {
+	switch (va) {
+#ifdef GHIDRA_CLIENT
+	// Scoreboard. Its vgui constructors are import thunks, and the recovered
+	// body calls them as ordinary functions.
+	case 0x10013a70u:
+		return true;
+#endif
+#ifdef GHIDRA_SERVER
+	// iostream / CRT objects. The decompiler dropped the frame pointer, so
+	// the bodies read unaff_EBP and compile to an unreachable trap.
+	case 0x100da0b8u:
+	case 0x100da129u:
+	case 0x100da1d5u:
+	case 0x100da245u:
+	case 0x100daab6u:
+	case 0x100dab27u:
+		return true;
+#endif
+	default:
+		return false;
+	}
+}
+
+static void ghidra_run_cxx_ctors() {
+#if defined(GHIDRA_CLIENT)
+	const uint32_t begin = 0x76000;
+	const uint32_t end = 0x760e0;
+#elif defined(GHIDRA_SERVER)
+	const uint32_t begin = 0x101000;
+	const uint32_t end = 0x1010a8;
+#else
+	return;
+#endif
+	uint32_t ran = 0;
+	uint32_t skipped = 0;
+	for (uint32_t rva = begin; rva + 4 <= end && rva + 4 <= ghidra_image_size; rva += 4) {
+		uint32_t bits = 0;
+		std::memcpy(&bits, ghidra_image + rva, 4);
+		if (bits == 0)
+			continue;
+		uint32_t va = ghidra_fn_va(bits);
+		if (va == 0 || ghidra_skip_ctor(va)) {
+			std::fprintf(stderr, "efw %s ctor skip rva %x va %x\n", GHIDRA_SIDE, rva, va);
+			skipped++;
+			continue;
+		}
+		std::fprintf(stderr, "efw %s ctor %x\n", GHIDRA_SIDE, va);
+		ghidra_invoke((uintptr_t)bits);
+		ran++;
+	}
+	std::fprintf(stderr, "efw decompiled %s: %u C++ constructors, %u skipped\n",
+		GHIDRA_SIDE, ran, skipped);
 }
 
 __attribute__((constructor(200))) static void ghidra_relocate_ctor() {
