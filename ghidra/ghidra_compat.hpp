@@ -483,7 +483,9 @@ struct CellLvalue {
 
 // One byte of the original image. Its address is the symbol's address.
 struct GhidraCell {
-	unsigned char raw;
+	// Eight bytes so a float or double load is inside the object. A one-byte
+	// cell lets the compiler drop the rest of a memcpy and read stack garbage.
+	unsigned char raw[8];
 	AnyPtr operator&() { return AnyPtr{this}; }
 	// Template so clang treats the address add as an exact match. One operator+(int)
 	// ties the built-in add once GStruct is constructible from a cell.
@@ -639,7 +641,7 @@ inline T &gh_at(uintptr_t addr) {
 		if (off < ghidra_image_size)
 			return *reinterpret_cast<T *>(ghidra_image + off);
 	}
-	static unsigned char low[65536];
+	static unsigned char low[65536 + 8];
 	return *reinterpret_cast<T *>(low + (addr & 0xffffu));
 }
 
