@@ -645,8 +645,18 @@ template <class T>
 inline auto ghidra_call_arg(T &x) -> std::enable_if_t<std::is_same<std::remove_cv_t<T>, SCell>::value, char *> {
 	return (char *)&x;
 }
+// A data symbol passed to an indirect call is the 4-byte value it holds.
+// Passing the 8-byte cell object makes the wasm type disagree with the callee.
 template <class T>
-inline auto ghidra_call_arg(T &x) -> std::enable_if_t<!std::is_same<std::remove_cv_t<T>, SCell>::value, T &> {
+inline auto ghidra_call_arg(T &x) -> std::enable_if_t<std::is_same<std::remove_cv_t<T>, GhidraCell>::value, uint32_t> {
+	uint32_t v = 0;
+	std::memcpy(&v, &x, 4);
+	return v;
+}
+template <class T>
+inline auto ghidra_call_arg(T &x) -> std::enable_if_t<
+	!std::is_same<std::remove_cv_t<T>, SCell>::value &&
+	!std::is_same<std::remove_cv_t<T>, GhidraCell>::value, T &> {
 	return x;
 }
 template <class T>

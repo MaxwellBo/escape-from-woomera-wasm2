@@ -96,6 +96,7 @@ try {
   console.error(error);
   setStatus("Failed to start: " + error.message);
   window.__efw.error = String(error);
+  window.__efw.errorStack = error && error.stack ? String(error.stack) : "";
 }
 
 if (testMode) {
