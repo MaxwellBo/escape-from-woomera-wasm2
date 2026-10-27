@@ -68,17 +68,48 @@ struct CodePtr {
 };
 using code = CodePtr;
 
-// Call a decompiled function without checking its recovered signature.
-// Ghidra's calls and definitions disagree about return type and arity.
+// wasm return class of an engine function pointer. Recovered calls always
+// look like they return an integer; the engine function may return float or void.
+enum class GhidraRet : uint8_t { I32, F32, VOID };
+#ifdef GHIDRA_WASM
+GhidraRet ghidra_engine_ret(uintptr_t fn);
+#else
+inline GhidraRet ghidra_engine_ret(uintptr_t) { return GhidraRet::I32; }
+#endif
+
 // The pointer is hidden from the optimizer so the call stays indirect.
 // A direct call with a mismatched wasm type is rejected by the linker.
 template <class F, class... A>
 uintptr_t ghidra_invoke(F fn, A... a) {
+	uintptr_t target = (uintptr_t)fn;
+	GhidraRet ret = ghidra_engine_ret(target);
+	if (ret == GhidraRet::F32) {
+		using Fn = float (*)(A...);
+		Fn p = reinterpret_cast<Fn>(fn);
+		asm volatile("" : "+r"(p));
+		float x = p(a...);
+		uint32_t bits = 0;
+		std::memcpy(&bits, &x, 4);
+		return bits;
+	}
+	if (ret == GhidraRet::VOID) {
+		using Fn = void (*)(A...);
+		Fn p = reinterpret_cast<Fn>(fn);
+		asm volatile("" : "+r"(p));
+		p(a...);
+		return 0;
+	}
 	using Fn = uintptr_t (*)(A...);
 	Fn p = reinterpret_cast<Fn>(fn);
 	asm volatile("" : "+r"(p));
 	return p(a...);
 }
+
+// The engine dlsyms these names. The recovered bodies keep the _impl names.
+#ifdef GHIDRA_WASM
+#define GiveFnptrsToDll GiveFnptrsToDll_impl
+#define Initialize Initialize_impl
+#endif
 
 #define __cdecl
 #define __fastcall
@@ -964,6 +995,8 @@ inline void out(T, U) {}
 
 // Win32 import thunks and the image relocation pass used by the wasm build.
 void ghidra_register(uint32_t va, void *fn);
+// ret matches GhidraRet: 0 i32, 1 f32, 2 void.
+void ghidra_note_fn(void *fn, int ret);
 void ghidra_relocate();
 uintptr_t efw_imp_dispatch(const char *name, int argc, uintptr_t *args);
 

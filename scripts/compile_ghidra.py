@@ -1012,6 +1012,21 @@ def wrap_stores(text):
     return unmask(wrapped, strings)
 
 
+def wasm_ret_code(text, cname):
+    """Wasm return class for ghidra_note_fn: 0 i32, 1 f32, 2 void."""
+    head, _ = function_parts(text)
+    if head.rfind(cname) < 0:
+        return 0
+    ret = return_type_before(head, cname)
+    if ret is None:
+        return 2
+    if "*" in ret or "&" in ret:
+        return 0
+    if ret.split()[-1:] == ["float"]:
+        return 1
+    return 0
+
+
 def return_type_before(head, name):
     idx = head.rfind(name)
     if idx < 0:
@@ -1372,6 +1387,11 @@ static int efw_abi_hull_bounds(int hull, float *, float *) {
 	return (int)ghidra_invoke(FUN_1001d750, hull);
 }
 __attribute__((constructor(101))) static void efw_abi_reg() {
+	ghidra_note_fn((void *)efw_abi_client_connect, 0);
+	ghidra_note_fn((void *)efw_abi_sys_error, 2);
+	ghidra_note_fn((void *)efw_abi_create_baseline, 2);
+	ghidra_note_fn((void *)efw_abi_connectionless, 0);
+	ghidra_note_fn((void *)efw_abi_hull_bounds, 0);
 	ghidra_register(0x1001a290u, (void *)efw_abi_client_connect);
 	ghidra_register(0x1001c430u, (void *)efw_abi_sys_error);
 	ghidra_register(0x1001cae0u, (void *)efw_abi_create_baseline);
@@ -1476,6 +1496,9 @@ def emit_wasm_batches(out, units, skip_vas):
             parts.append(text)
             if not text.endswith("\n"):
                 parts.append("\n")
+            regs.append(
+                f"  ghidra_note_fn((void *){cname}, {wasm_ret_code(text, cname)});"
+            )
             if int(addr, 16) not in skip_vas:
                 regs.append(f"  ghidra_register(0x{addr}u, (void *){cname});")
         if regs:
@@ -1669,6 +1692,7 @@ def load_emsdk():
 def wasm_compile(cpp, obj, include, opt, defines=()):
     cmd = [
         "em++", "-c", "-std=c++17", "-fPIC", "-fpermissive", "-w", "-Wno-c++11-narrowing",
+        "-DGHIDRA_WASM",
         opt, "-fmax-errors=8",
         "-I", str(include),
         "-I", str(ROOT / "ghidra"),
@@ -1700,7 +1724,10 @@ def compile_wasm(out, jobs, side):
         (out / "ghidra_image.cpp", "-O0", ()),
         (out / "ghidra_relocs.cpp", "-O0", ()),
         (out / "ghidra_abi.cpp", "-O1", ()),
-        (ROOT / "ghidra" / "ghidra_host.cpp", "-O1", (f'-DGHIDRA_SIDE="{side}"',)),
+        (ROOT / "ghidra" / "ghidra_host.cpp", "-O1", (
+            f'-DGHIDRA_SIDE="{side}"',
+            "-DGHIDRA_SERVER=1" if side == "server" else "-DGHIDRA_CLIENT=1",
+        )),
     ]
     failures = []
     ok = 0
@@ -1728,7 +1755,7 @@ def compile_wasm(out, jobs, side):
 
 
 def link_wasm(out, dest):
-    """Link a side module. fpcast-emu's default cap is 16 params; listings go higher."""
+    """Link a side module with the engine's native function-pointer types."""
     objs = sorted((out / "obj").glob("*.o"))
     rsp = out / "link.rsp"
     rsp.write_text("\n".join(str(obj) for obj in objs) + "\n")
@@ -1737,8 +1764,6 @@ def link_wasm(out, dest):
     cmd = [
         "em++",
         "-sSIDE_MODULE=1",
-        "-sEMULATE_FUNCTION_POINTER_CASTS=1",
-        "-sBINARYEN_EXTRA_PASSES=--pass-arg=max-func-params@64",
         "-O1",
         f"@{rsp}",
         "-o", str(staged),

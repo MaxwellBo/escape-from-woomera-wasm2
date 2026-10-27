@@ -1,6 +1,9 @@
 // Runtime for the decompiled DLLs: relocate the PE image and answer Win32 imports.
 #include "ghidra_compat.hpp"
+#undef GiveFnptrsToDll
+#undef Initialize
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -27,21 +30,38 @@ void ghidra_register(uint32_t va, void *fn) {
 		g_regs[g_nregs++] = VaFn{va, fn};
 }
 
-static int vacmp(const void *a, const void *b) {
-	uint32_t xa = ((const VaFn *)a)->va;
-	uint32_t xb = ((const VaFn *)b)->va;
-	if (xa < xb)
-		return -1;
-	if (xa > xb)
-		return 1;
-	return 0;
+struct FnRet {
+	uint32_t fn;
+	uint8_t ret;
+};
+static FnRet g_fnret[16384];
+static uint32_t g_nfnret;
+static int g_fnret_ready;
+
+void ghidra_note_fn(void *fn, int ret) {
+	if (fn == nullptr)
+		return;
+	if (g_nfnret < (uint32_t)(sizeof g_fnret / sizeof g_fnret[0]))
+		g_fnret[g_nfnret++] = FnRet{(uint32_t)(uintptr_t)fn, (uint8_t)ret};
+	g_fnret_ready = 0;
+}
+
+static void sort_fnret() {
+	if (g_fnret_ready)
+		return;
+	std::sort(g_fnret, g_fnret + g_nfnret, [](const FnRet &a, const FnRet &b) {
+		return a.fn < b.fn;
+	});
+	g_fnret_ready = 1;
 }
 
 void ghidra_relocate() {
 	if (g_relocated || g_nregs == 0)
 		return;
 	g_relocated = 1;
-	std::qsort(g_regs, g_nregs, sizeof g_regs[0], vacmp);
+	std::sort(g_regs, g_regs + g_nregs, [](const VaFn &a, const VaFn &b) {
+		return a.va < b.va;
+	});
 	uint32_t patched = 0;
 	for (uint32_t i = 0; i < ghidra_reloc_count; i++) {
 		uint32_t rva = ghidra_relocs[i];
@@ -49,10 +69,10 @@ void ghidra_relocate() {
 			continue;
 		uint32_t value = 0;
 		std::memcpy(&value, ghidra_image + rva, 4);
-		VaFn key{value, nullptr};
-		VaFn *found = (VaFn *)std::bsearch(&key, g_regs, g_nregs, sizeof g_regs[0], vacmp);
+		auto found = std::lower_bound(g_regs, g_regs + g_nregs, value,
+			[](const VaFn &e, uint32_t va) { return e.va < va; });
 		uint32_t bits = 0;
-		if (found)
+		if (found != g_regs + g_nregs && found->va == value)
 			bits = (uint32_t)(uintptr_t)found->fn;
 		else if (value >= 0x10000000u && value - 0x10000000u < ghidra_image_size)
 			bits = (uint32_t)(uintptr_t)(ghidra_image + (value - 0x10000000u));
@@ -61,6 +81,7 @@ void ghidra_relocate() {
 		std::memcpy(ghidra_image + rva, &bits, 4);
 		patched++;
 	}
+	sort_fnret();
 	std::fprintf(stderr, "efw decompiled %s: %u functions, %u relocs patched\n",
 		GHIDRA_SIDE, g_nregs, patched);
 }
@@ -68,6 +89,71 @@ void ghidra_relocate() {
 __attribute__((constructor(200))) static void ghidra_relocate_ctor() {
 	ghidra_relocate();
 }
+
+// Return class of each enginefuncs_t / cl_enginefunc_t slot the DLL copies.
+// i = i32 or pointer, f = f32, v = void, x = not a function.
+static const char kServerEng[] =
+	"iiviivvvvfvvvviiiiivviviviiivvvvvivvivvvvvvviivvvvvvvvvvvfivvvvvvv"
+	"iiiiiiiivivvvivviiivvvviifvfvivvivvvviviiivviviiviiiviviiviiivvvii"
+	"ivvvivvvvii";
+static const char kClientEng[] =
+	"iiiivvvvvvivivifiiiiivvvviiivvvviivviviivvvviifivviiiifvviiiiiivi"
+	"vifiviiiiivviviivxxxxxxiiviiviiii";
+
+static_assert(sizeof kServerEng == 144, "enginefuncs_t return classes");
+static_assert(sizeof kClientEng == 99, "cl_enginefunc_t return classes");
+static_assert((int)GhidraRet::I32 == 0 && (int)GhidraRet::F32 == 1 && (int)GhidraRet::VOID == 2, "note codes");
+
+struct EngRet {
+	uint32_t fn;
+	GhidraRet ret;
+};
+static EngRet g_eng[256];
+static int g_neng;
+
+static void note_engine(const uint32_t *table, int n, const char *kinds) {
+	g_neng = 0;
+	for (int i = 0; i < n && kinds[i]; i++) {
+		if (kinds[i] == 'x' || table[i] == 0)
+			continue;
+		GhidraRet ret = GhidraRet::I32;
+		if (kinds[i] == 'f')
+			ret = GhidraRet::F32;
+		else if (kinds[i] == 'v')
+			ret = GhidraRet::VOID;
+		if (g_neng < (int)(sizeof g_eng / sizeof g_eng[0]))
+			g_eng[g_neng++] = EngRet{table[i], ret};
+	}
+}
+
+GhidraRet ghidra_engine_ret(uintptr_t fn) {
+	uint32_t f = (uint32_t)fn;
+	for (int i = 0; i < g_neng; i++)
+		if (g_eng[i].fn == f)
+			return g_eng[i].ret;
+	sort_fnret();
+	auto found = std::lower_bound(g_fnret, g_fnret + g_nfnret, f,
+		[](const FnRet &e, uint32_t key) { return e.fn < key; });
+	if (found != g_fnret + g_nfnret && found->fn == f)
+		return (GhidraRet)found->ret;
+	return GhidraRet::I32;
+}
+
+#ifdef GHIDRA_SERVER
+extern "C" void GiveFnptrsToDll_impl(uint32_t *table, uint32_t globals);
+extern "C" void GiveFnptrsToDll(uint32_t *table, uint32_t globals) {
+	note_engine(table, 143, kServerEng);
+	GiveFnptrsToDll_impl(table, globals);
+}
+#endif
+
+#ifdef GHIDRA_CLIENT
+extern "C" uint32_t Initialize_impl(uint32_t *table, int version);
+extern "C" uint32_t Initialize(uint32_t *table, int version) {
+	note_engine(table, 98, kClientEng);
+	return Initialize_impl(table, version);
+}
+#endif
 
 static int g_last_error;
 static uintptr_t g_tls[64];
