@@ -48,7 +48,7 @@ int __thiscall FUN_100bbb30(void *this,uint param_1,char param_2)
             *(undefined4 *)((int)this + 4) = 0;
             *(undefined4 *)((int)this + 8) = 0;
             *(undefined4 *)((int)this + 0xc) = 0;
-            uVar3 = FUN_100bcd30(param_1);
+            uVar3 = FUN_100bcd30(this, param_1);
             return CONCAT31((int3)((uint)uVar3 >> 8),1);
           }
           FUN_100c8ce6(puVar4 + -1);
@@ -56,7 +56,7 @@ int __thiscall FUN_100bbb30(void *this,uint param_1,char param_2)
         *(undefined4 *)((int)this + 4) = 0;
         *(undefined4 *)((int)this + 8) = 0;
         *(undefined4 *)((int)this + 0xc) = 0;
-        uVar3 = FUN_100bcd30(param_1);
+        uVar3 = FUN_100bcd30(this, param_1);
         return CONCAT31((int3)((uint)uVar3 >> 8),1);
       }
       goto LAB_100bbc42;
@@ -70,7 +70,7 @@ int __thiscall FUN_100bbb30(void *this,uint param_1,char param_2)
     *(undefined4 *)((int)this + 0xc) = 0;
     return (uint)uVar5 << 8;
   }
-  puVar4 = (undefined1 *)FUN_100bcd30(param_1);
+  puVar4 = (undefined1 *)FUN_100bcd30(this, param_1);
 LAB_100bbc42:
   return CONCAT31((int3)((uint)puVar4 >> 8),1);
 }

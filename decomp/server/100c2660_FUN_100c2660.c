@@ -53,7 +53,7 @@ undefined4 __cdecl FUN_100c2660(char *param_1)
       goto LAB_100c2759;
     }
 LAB_100c2728:
-    FUN_100bcd30(uVar4);
+    FUN_100bcd30(&DAT_10132450, uVar4);
   }
   pcVar5 = DAT_10132454;
   for (uVar3 = uVar4 >> 2; uVar3 != 0; uVar3 = uVar3 - 1) {

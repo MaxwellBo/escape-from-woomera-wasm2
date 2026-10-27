@@ -39,7 +39,7 @@ undefined1 * __thiscall FUN_100ba310(void *this,char *param_1,undefined1 *param_
     FUN_100bacf0(this,'\0');
     return this;
   }
-  FUN_100bcd30(uVar3);
+  FUN_100bcd30(this, uVar3);
 LAB_100ba3a3:
   pcVar5 = *(char **)((int)this + 4);
   for (uVar4 = uVar3 >> 2; uVar4 != 0; uVar4 = uVar4 - 1) {

@@ -106,7 +106,7 @@ void * __thiscall FUN_100ba9a0(void *this,void *param_1,uint param_2,uint param_
     FUN_100bacf0(this,'\0');
     return this;
   }
-  FUN_100bcd30(uVar6);
+  FUN_100bcd30(this, uVar6);
 LAB_100bab6c:
   puVar5 = *(undefined4 **)((int)param_1 + 4);
   if (puVar5 == (undefined4 *)0x0) {

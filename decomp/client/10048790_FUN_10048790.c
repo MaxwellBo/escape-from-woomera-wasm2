@@ -107,7 +107,7 @@ FUN_10048790(void *this,char *param_1,undefined4 param_2,undefined4 param_3,int 
     ExceptionList = local_c;
     return this;
   }
-  FUN_10042ff0(uVar6);
+  FUN_10042ff0(this_00, uVar6);
 LAB_1004890e:
   pcVar8 = *(char **)((int)this + 0xd8);
   for (uVar5 = uVar6 >> 2; uVar5 != 0; uVar5 = uVar5 - 1) {

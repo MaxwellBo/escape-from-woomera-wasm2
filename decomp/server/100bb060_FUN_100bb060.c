@@ -75,7 +75,7 @@ void * __thiscall FUN_100bb060(void *this,uint param_1,uint param_2)
     FUN_100bacf0(this,'\0');
     return this;
   }
-  FUN_100bcd30(uVar4);
+  FUN_100bcd30(this, uVar4);
 LAB_100bb164:
   *(uint *)((int)this + 8) = uVar4;
   *(undefined1 *)(uVar4 + *(int *)((int)this + 4)) = 0;

@@ -39,7 +39,7 @@ void FUN_100bfdd0(undefined4 param_1,undefined4 param_2,void *param_3)
     *(undefined4 *)((int)param_3 + 0xc) = 0;
     return;
   }
-  FUN_100bcd30(uVar3);
+  FUN_100bcd30(param_3, uVar3);
 LAB_100bfe4e:
   puVar5 = (undefined4 *)0x1011c41c;
   puVar7 = *(undefined4 **)((int)param_3 + 4);

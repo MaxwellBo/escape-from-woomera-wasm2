@@ -49,7 +49,7 @@ void __fastcall FUN_10048950(int *param_1)
       goto LAB_10048a40;
     }
 LAB_10048a08:
-    FUN_10042ff0(uVar4);
+    FUN_10042ff0(&DAT_100baf00, uVar4);
   }
   pcVar5 = s_;
   pcVar6 = DAT_100baf04;

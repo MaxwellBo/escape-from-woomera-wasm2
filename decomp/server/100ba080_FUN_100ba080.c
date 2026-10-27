@@ -51,7 +51,7 @@ void __cdecl FUN_100ba080(uint param_1,char *param_2,byte param_3)
       goto LAB_100ba15a;
     }
 LAB_100ba12f:
-    FUN_100bcd30((uint)fVar5);
+    FUN_100bcd30(pfVar3 + 1, (uint)fVar5);
   }
   pcVar6 = param_2;
   pcVar7 = (char *)pfVar3[2];

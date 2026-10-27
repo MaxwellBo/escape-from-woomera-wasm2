@@ -51,7 +51,7 @@ void __fastcall FUN_100bbc60(void *param_1)
     FUN_100bacf0(param_1,'\0');
     return;
   }
-  FUN_100bcd30(uVar3);
+  FUN_100bcd30(param_1, uVar3);
 LAB_100bbd07:
   pcVar6 = *(char **)((int)param_1 + 4);
   for (uVar4 = uVar3 >> 2; uVar4 != 0; uVar4 = uVar4 - 1) {

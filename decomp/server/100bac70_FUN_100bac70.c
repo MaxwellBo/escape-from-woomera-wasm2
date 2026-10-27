@@ -30,7 +30,7 @@ void __fastcall FUN_100bac70(void *param_1)
     *(undefined4 *)((int)param_1 + 0xc) = 0;
     goto LAB_100bacd8;
   }
-  FUN_100bcd30(uVar2);
+  FUN_100bcd30(param_1, uVar2);
 LAB_100bacd8:
   if (*(int *)((int)param_1 + 4) != 0) {
     *(undefined1 *)(*(int *)((int)param_1 + 4) + -1) = 0xff;

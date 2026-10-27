@@ -36,7 +36,7 @@ void * __thiscall FUN_10046d60(void *this,undefined4 *param_1,uint param_2)
     *(undefined4 *)((int)this + 0xc) = 0;
     return this;
   }
-  FUN_10042ff0(uVar4);
+  FUN_10042ff0(this, uVar4);
 LAB_10046deb:
   puVar5 = (undefined4 *)(*(int *)((int)this + 4) + *(int *)((int)this + 8));
   for (uVar3 = param_2 >> 2; uVar3 != 0; uVar3 = uVar3 - 1) {

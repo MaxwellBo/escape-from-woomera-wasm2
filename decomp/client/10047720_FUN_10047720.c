@@ -49,7 +49,7 @@ void FUN_10047720(void)
     }
     else {
 LAB_100477de:
-      FUN_10042ff0(uVar3);
+      FUN_10042ff0(piVar5 + -1, uVar3);
 LAB_100477e3:
       pcVar6 = acStack_100;
       pcVar7 = (char *)*piVar5;

@@ -43,7 +43,7 @@ void * __thiscall FUN_10046c80(void *this,int param_1,uint param_2,uint param_3)
     FUN_100424b0(this,'\0');
     return this;
   }
-  FUN_10042ff0(uVar3);
+  FUN_10042ff0(this, uVar3);
 LAB_10046d21:
   puVar4 = *(undefined4 **)(param_1 + 4);
   if (puVar4 == (undefined4 *)0x0) {

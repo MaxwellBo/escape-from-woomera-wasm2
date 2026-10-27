@@ -33,7 +33,7 @@ undefined4 * __thiscall FUN_100c00c0(void *this,uint param_1)
     *(undefined4 *)((int)this + 0xc) = 0;
     goto LAB_100c0131;
   }
-  FUN_100bcd30(uVar2);
+  FUN_100bcd30(this, uVar2);
 LAB_100c0131:
   if (*(int *)((int)this + 4) != 0) {
     *(undefined1 *)(*(int *)((int)this + 4) + -1) = 0xff;
