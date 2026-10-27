@@ -34,14 +34,18 @@ using WORD = unsigned short;
 struct Call;
 struct GhidraCell;
 
+template <class F, class... A>
+uintptr_t ghidra_invoke(F fn, A... a);
+
 // Listings spell a function pointer `code *`. The compiler rewrites that to
 // CodePtr so the pointer value itself is what gets called.
 struct CodePtr {
 	uintptr_t fn;
 	CodePtr() : fn(0) {}
-	CodePtr(uintptr_t f) : fn(f) {}
-	CodePtr(unsigned f) : fn(f) {}
-	CodePtr(int f) : fn((uintptr_t)(unsigned)f) {}
+	// One constructor for every integer width. wasm32's long and int are the
+	// same size but distinct types, and uintptr_t is unsigned long.
+	template <class T, class = std::enable_if_t<std::is_integral<T>::value>>
+	CodePtr(T f) : fn((uintptr_t)(uint32_t)f) {}
 	CodePtr(void *p) : fn((uintptr_t)p) {}
 	template <class R, class... A>
 	CodePtr(R (*p)(A...)) : fn((uintptr_t)p) {}
@@ -56,7 +60,7 @@ struct CodePtr {
 	template <class... A>
 	uintptr_t operator()(A... a) const {
 		using Fn = uintptr_t (*)(A...);
-		return reinterpret_cast<Fn>(fn)(a...);
+		return ghidra_invoke(reinterpret_cast<Fn>(fn), a...);
 	}
 	const CodePtr &operator*() const { return *this; }
 	explicit operator int() const { return (int)fn; }
@@ -66,10 +70,14 @@ using code = CodePtr;
 
 // Call a decompiled function without checking its recovered signature.
 // Ghidra's calls and definitions disagree about return type and arity.
+// The pointer is hidden from the optimizer so the call stays indirect.
+// A direct call with a mismatched wasm type is rejected by the linker.
 template <class F, class... A>
 uintptr_t ghidra_invoke(F fn, A... a) {
 	using Fn = uintptr_t (*)(A...);
-	return reinterpret_cast<Fn>(fn)(a...);
+	Fn p = reinterpret_cast<Fn>(fn);
+	asm volatile("" : "+r"(p));
+	return p(a...);
 }
 
 #define __cdecl
@@ -192,41 +200,83 @@ struct GStruct {
 	bool operator!=(const void *p) const { return (void *)(uintptr_t)v != p; }
 	friend bool operator==(const void *p, const GStruct &g) { return g == p; }
 	friend bool operator!=(const void *p, const GStruct &g) { return g != p; }
-	GStruct(int x) : GStruct() { v = (unsigned)x; }
-	GStruct(unsigned x) : GStruct() { v = x; }
-	GStruct(long x) : GStruct() { v = (unsigned)x; }
-	GStruct(unsigned long x) : GStruct() { v = (unsigned)x; }
-	GStruct(long long x) : GStruct() { v = (unsigned)x; }
-	GStruct(unsigned long long x) : GStruct() { v = (unsigned)x; }
+	// Exact integer compare. `0` is also a null pointer, so `==` would otherwise
+	// tie operator==(const void *) with the built-in integer compare.
+	template <class T, class = std::enable_if_t<std::is_integral<T>::value>>
+	bool operator==(T x) const { return (unsigned)v == (unsigned)x; }
+	template <class T, class = std::enable_if_t<std::is_integral<T>::value>>
+	bool operator!=(T x) const { return (unsigned)v != (unsigned)x; }
+	template <class T, class = std::enable_if_t<std::is_integral<T>::value>>
+	friend bool operator==(T x, const GStruct &g) { return g == x; }
+	template <class T, class = std::enable_if_t<std::is_integral<T>::value>>
+	friend bool operator!=(T x, const GStruct &g) { return g != x; }
+	// Integers and pointers share one constructor so wasm32's identical integer widths still overload.
+	template <class T, class = std::enable_if_t<std::is_integral<T>::value || std::is_pointer<T>::value>>
+	GStruct(T x) : GStruct() {
+		if constexpr (std::is_pointer<T>::value)
+			v = (unsigned)(uintptr_t)x;
+		else
+			v = (unsigned)x;
+	}
 	GStruct(float x) : GStruct() { std::memcpy(&v, &x, 4); }
 	GStruct(double x) : GStruct() { float f = (float)x; std::memcpy(&v, &f, 4); }
 	GStruct(long double x) : GStruct() { float f = (float)x; std::memcpy(&v, &f, 4); }
-	template <class T, class = std::enable_if_t<std::is_pointer<T>::value>>
-	GStruct(T p) : GStruct() { v = (unsigned)(uintptr_t)p; }
 	operator int() const { return (int)v; }
 	explicit operator unsigned() const { return v; }
+#if ULONG_MAX > UINT_MAX
 	explicit operator unsigned long() const { return v; }
+#endif
 	explicit operator void *() const { return (void *)(uintptr_t)v; }
 	explicit operator bool() const { return v != 0; }
 	// Listings use `->` on typedefs that are values here (PEXCEPTION_RECORD).
 	GStruct *operator->() { return this; }
 	const GStruct *operator->() const { return this; }
-	unsigned operator&(unsigned x) const { return v & x; }
-	unsigned operator|(unsigned x) const { return v | x; }
-	unsigned operator^(unsigned x) const { return v ^ x; }
-	unsigned operator+(unsigned x) const { return v + x; }
-	unsigned operator-(unsigned x) const { return v - x; }
-	unsigned operator*(unsigned x) const { return v * x; }
-	unsigned operator/(unsigned x) const { return x ? v / x : 0; }
-	unsigned operator%(unsigned x) const { return x ? v % x : 0; }
-	unsigned operator<<(unsigned x) const { return v << (x & 31); }
-	unsigned operator>>(unsigned x) const { return v >> (x & 31); }
+	// Templates are exact matches for every integer width. A single
+	// operator+(unsigned) is ambiguous on clang with the built-in operator
+	// once GStruct converts to int.
+	template <class T, class = std::enable_if_t<std::is_integral<T>::value>>
+	unsigned operator&(T x) const { return v & (unsigned)x; }
+	template <class T, class = std::enable_if_t<std::is_integral<T>::value>>
+	unsigned operator|(T x) const { return v | (unsigned)x; }
+	template <class T, class = std::enable_if_t<std::is_integral<T>::value>>
+	unsigned operator^(T x) const { return v ^ (unsigned)x; }
+	template <class T, class = std::enable_if_t<std::is_integral<T>::value>>
+	unsigned operator+(T x) const { return v + (unsigned)x; }
+	template <class T, class = std::enable_if_t<std::is_integral<T>::value>>
+	unsigned operator-(T x) const { return v - (unsigned)x; }
+	template <class T, class = std::enable_if_t<std::is_integral<T>::value>>
+	unsigned operator*(T x) const { return v * (unsigned)x; }
+	template <class T, class = std::enable_if_t<std::is_integral<T>::value>>
+	unsigned operator/(T x) const { unsigned d = (unsigned)x; return d ? v / d : 0; }
+	template <class T, class = std::enable_if_t<std::is_integral<T>::value>>
+	unsigned operator%(T x) const { unsigned d = (unsigned)x; return d ? v % d : 0; }
+	template <class T, class = std::enable_if_t<std::is_integral<T>::value>>
+	unsigned operator<<(T x) const { return v << ((unsigned)x & 31); }
+	template <class T, class = std::enable_if_t<std::is_integral<T>::value>>
+	unsigned operator>>(T x) const { return v >> ((unsigned)x & 31); }
+	template <class T, class = std::enable_if_t<std::is_integral<T>::value>>
+	friend unsigned operator&(T a, const GStruct &g) { return (unsigned)a & g.v; }
+	template <class T, class = std::enable_if_t<std::is_integral<T>::value>>
+	friend unsigned operator|(T a, const GStruct &g) { return (unsigned)a | g.v; }
+	template <class T, class = std::enable_if_t<std::is_integral<T>::value>>
+	friend unsigned operator^(T a, const GStruct &g) { return (unsigned)a ^ g.v; }
+	template <class T, class = std::enable_if_t<std::is_integral<T>::value>>
+	friend unsigned operator+(T a, const GStruct &g) { return (unsigned)a + g.v; }
+	template <class T, class = std::enable_if_t<std::is_integral<T>::value>>
+	friend unsigned operator-(T a, const GStruct &g) { return (unsigned)a - g.v; }
+	template <class T, class = std::enable_if_t<std::is_integral<T>::value>>
+	friend unsigned operator*(T a, const GStruct &g) { return (unsigned)a * g.v; }
 	unsigned operator~() const { return ~v; }
-	GStruct &operator+=(unsigned x) { v += x; return *this; }
-	GStruct &operator-=(unsigned x) { v -= x; return *this; }
-	GStruct &operator|=(unsigned x) { v |= x; return *this; }
-	GStruct &operator&=(unsigned x) { v &= x; return *this; }
-	GStruct &operator^=(unsigned x) { v ^= x; return *this; }
+	template <class T, class = std::enable_if_t<std::is_integral<T>::value>>
+	GStruct &operator+=(T x) { v += (unsigned)x; return *this; }
+	template <class T, class = std::enable_if_t<std::is_integral<T>::value>>
+	GStruct &operator-=(T x) { v -= (unsigned)x; return *this; }
+	template <class T, class = std::enable_if_t<std::is_integral<T>::value>>
+	GStruct &operator|=(T x) { v |= (unsigned)x; return *this; }
+	template <class T, class = std::enable_if_t<std::is_integral<T>::value>>
+	GStruct &operator&=(T x) { v &= (unsigned)x; return *this; }
+	template <class T, class = std::enable_if_t<std::is_integral<T>::value>>
+	GStruct &operator^=(T x) { v ^= (unsigned)x; return *this; }
 	template <class T, class = std::enable_if_t<!std::is_same<std::remove_cv_t<std::remove_reference_t<T>>, GStruct>::value>>
 	GStruct &operator=(const T &x) {
 		if constexpr (std::is_pointer<T>::value)
@@ -246,8 +296,24 @@ struct Call;
 // A proxy so `&SYM` converts to whatever pointer the listing stores it in.
 struct AnyPtr {
 	void *p;
-	AnyPtr operator+(int n) const { return AnyPtr{(char *)p + n}; }
-	AnyPtr operator-(int n) const { return AnyPtr{(char *)p - n}; }
+	// A template is an exact match for every integer width. A single operator+(int)
+	// is ambiguous on clang once another type is constructible from AnyPtr.
+	template <class T, class = std::enable_if_t<std::is_integral<T>::value>>
+	AnyPtr operator+(T n) const { return AnyPtr{(char *)p + (ptrdiff_t)n}; }
+	template <class T, class = std::enable_if_t<std::is_integral<T>::value>>
+	AnyPtr operator-(T n) const { return AnyPtr{(char *)p - (ptrdiff_t)n}; }
+	template <class T, class = std::enable_if_t<std::is_integral<T>::value>>
+	bool operator==(T n) const { return (int)(uintptr_t)p == (int)n; }
+	template <class T, class = std::enable_if_t<std::is_integral<T>::value>>
+	bool operator!=(T n) const { return (int)(uintptr_t)p != (int)n; }
+	template <class T, class = std::enable_if_t<std::is_integral<T>::value>>
+	bool operator<(T n) const { return (uintptr_t)p < (uintptr_t)(uint32_t)n; }
+	template <class T, class = std::enable_if_t<std::is_integral<T>::value>>
+	bool operator>(T n) const { return (uintptr_t)p > (uintptr_t)(uint32_t)n; }
+	template <class T, class = std::enable_if_t<std::is_integral<T>::value>>
+	bool operator<=(T n) const { return (uintptr_t)p <= (uintptr_t)(uint32_t)n; }
+	template <class T, class = std::enable_if_t<std::is_integral<T>::value>>
+	bool operator>=(T n) const { return (uintptr_t)p >= (uintptr_t)(uint32_t)n; }
 	template <class T>
 	operator T *() const { return (T *)p; }
 	operator int() const { return (int)(uintptr_t)p; }
@@ -293,17 +359,24 @@ struct Call {
 	friend bool operator>(float x, const Call &c) { return x > (float)c; }
 	friend bool operator<=(float x, const Call &c) { return x <= (float)c; }
 	friend bool operator>=(float x, const Call &c) { return x >= (float)c; }
-	unsigned operator&(unsigned x) const { return (unsigned)fn & x; }
-	unsigned operator|(unsigned x) const { return (unsigned)fn | x; }
-	unsigned operator<<(unsigned n) const { return (unsigned)fn << (n & 31); }
-	unsigned operator>>(unsigned n) const { return (unsigned)fn >> (n & 31); }
-	friend unsigned operator&(unsigned a, const Call &c) { return a & (unsigned)c.fn; }
-	friend unsigned operator|(unsigned a, const Call &c) { return a | (unsigned)c.fn; }
-	friend unsigned operator<<(unsigned a, const Call &c) { return a << ((unsigned)c.fn & 31); }
+	template <class T, class = std::enable_if_t<std::is_integral<T>::value>>
+	unsigned operator&(T x) const { return (unsigned)fn & (unsigned)x; }
+	template <class T, class = std::enable_if_t<std::is_integral<T>::value>>
+	unsigned operator|(T x) const { return (unsigned)fn | (unsigned)x; }
+	template <class T, class = std::enable_if_t<std::is_integral<T>::value>>
+	unsigned operator<<(T n) const { return (unsigned)fn << ((unsigned)n & 31); }
+	template <class T, class = std::enable_if_t<std::is_integral<T>::value>>
+	unsigned operator>>(T n) const { return (unsigned)fn >> ((unsigned)n & 31); }
+	template <class T, class = std::enable_if_t<std::is_integral<T>::value>>
+	friend unsigned operator&(T a, const Call &c) { return (unsigned)a & (unsigned)c.fn; }
+	template <class T, class = std::enable_if_t<std::is_integral<T>::value>>
+	friend unsigned operator|(T a, const Call &c) { return (unsigned)a | (unsigned)c.fn; }
+	template <class T, class = std::enable_if_t<std::is_integral<T>::value>>
+	friend unsigned operator<<(T a, const Call &c) { return (unsigned)a << ((unsigned)c.fn & 31); }
 	template <class... A>
 	uintptr_t operator()(A... a) const {
 		using Fn = uintptr_t (*)(A...);
-		return reinterpret_cast<Fn>(fn)(a...);
+		return ghidra_invoke(reinterpret_cast<Fn>(fn), a...);
 	}
 };
 
@@ -344,12 +417,36 @@ struct CellLvalue {
 	bool operator>(float x) const { return (float)*this > x; }
 	bool operator<=(float x) const { return (float)*this <= x; }
 	bool operator>=(float x) const { return (float)*this >= x; }
+	template <class T, class = std::enable_if_t<std::is_integral<T>::value>>
+	bool operator<(T x) const { return (int)*this < (int)x; }
+	template <class T, class = std::enable_if_t<std::is_integral<T>::value>>
+	bool operator>(T x) const { return (int)*this > (int)x; }
+	template <class T, class = std::enable_if_t<std::is_integral<T>::value>>
+	bool operator<=(T x) const { return (int)*this <= (int)x; }
+	template <class T, class = std::enable_if_t<std::is_integral<T>::value>>
+	bool operator>=(T x) const { return (int)*this >= (int)x; }
+	template <class T, class = std::enable_if_t<std::is_integral<T>::value>>
+	bool operator==(T x) const { return (int)*this == (int)x; }
+	template <class T, class = std::enable_if_t<std::is_integral<T>::value>>
+	bool operator!=(T x) const { return (int)*this != (int)x; }
+	template <class T, class = std::enable_if_t<std::is_integral<T>::value>>
+	friend bool operator<(T x, const CellLvalue &c) { return (int)x < (int)c; }
+	template <class T, class = std::enable_if_t<std::is_integral<T>::value>>
+	friend bool operator>(T x, const CellLvalue &c) { return (int)x > (int)c; }
+	template <class T, class = std::enable_if_t<std::is_integral<T>::value>>
+	friend bool operator<=(T x, const CellLvalue &c) { return (int)x <= (int)c; }
+	template <class T, class = std::enable_if_t<std::is_integral<T>::value>>
+	friend bool operator>=(T x, const CellLvalue &c) { return (int)x >= (int)c; }
+	template <class T, class = std::enable_if_t<std::is_integral<T>::value>>
+	friend bool operator==(T x, const CellLvalue &c) { return (int)x == (int)c; }
+	template <class T, class = std::enable_if_t<std::is_integral<T>::value>>
+	friend bool operator!=(T x, const CellLvalue &c) { return (int)x != (int)c; }
 	template <class T>
 	CellLvalue &operator=(T v);
 	template <class... A>
 	uintptr_t operator()(A... a) const {
 		using Fn = uintptr_t (*)(A...);
-		return reinterpret_cast<Fn>((uintptr_t)bits())(a...);
+		return ghidra_invoke(reinterpret_cast<Fn>((uintptr_t)bits()), a...);
 	}
 };
 
@@ -357,8 +454,12 @@ struct CellLvalue {
 struct GhidraCell {
 	unsigned char raw;
 	AnyPtr operator&() { return AnyPtr{this}; }
-	uintptr_t operator+(intptr_t n) const { return (uintptr_t)this + (uintptr_t)n; }
-	uintptr_t operator-(intptr_t n) const { return (uintptr_t)this - (uintptr_t)n; }
+	// Template so clang treats the address add as an exact match. One operator+(int)
+	// ties the built-in add once GStruct is constructible from a cell.
+	template <class T, class = std::enable_if_t<std::is_integral<T>::value>>
+	AnyPtr operator+(T n) const { return AnyPtr{(char *)this + (ptrdiff_t)n}; }
+	template <class T, class = std::enable_if_t<std::is_integral<T>::value>>
+	AnyPtr operator-(T n) const { return AnyPtr{(char *)this - (ptrdiff_t)n}; }
 	GhidraCell &operator[](intptr_t i) {
 		return *reinterpret_cast<GhidraCell *>((uintptr_t)this + (uintptr_t)i);
 	}
@@ -492,7 +593,8 @@ struct SCell {
 	operator void *() const { return (void *)this; }
 	operator int() const { return (int)(uintptr_t)this; }
 	char operator[](int i) const { return ((char *)this)[i]; }
-	char *operator+(int n) const { return (char *)this + n; }
+	template <class T, class = std::enable_if_t<std::is_integral<T>::value>>
+	char *operator+(T n) const { return (char *)this + (ptrdiff_t)n; }
 	AnyPtr operator&() { return AnyPtr{(void *)this}; }
 };
 
@@ -699,19 +801,15 @@ inline T *ghidra_pcast(From x) {
 struct int3 {
 	unsigned v;
 	int3() : v(0) {}
-	int3(unsigned x) : v(x & 0xffffffu) {}
-	int3(int x) : v((unsigned)x & 0xffffffu) {}
-	int3(unsigned long x) : v((unsigned)x & 0xffffffu) {}
-	int3(unsigned long long x) : v((unsigned)x & 0xffffffu) {}
+	template <class T, class = std::enable_if_t<std::is_integral<T>::value>>
+	int3(T x) : v((unsigned)x & 0xffffffu) {}
 	operator unsigned() const { return v; }
 };
 struct uint3 {
 	unsigned v;
 	uint3() : v(0) {}
-	uint3(unsigned x) : v(x & 0xffffffu) {}
-	uint3(int x) : v((unsigned)x & 0xffffffu) {}
-	uint3(unsigned long x) : v((unsigned)x & 0xffffffu) {}
-	uint3(unsigned long long x) : v((unsigned)x & 0xffffffu) {}
+	template <class T, class = std::enable_if_t<std::is_integral<T>::value>>
+	uint3(T x) : v((unsigned)x & 0xffffffu) {}
 	operator unsigned() const { return v; }
 };
 struct int6 {
@@ -739,7 +837,157 @@ struct uint6 {
 	operator unsigned long long() const { return v; }
 };
 
+// Assignment and cast helpers. The listings are 32-bit C: pointers, integers,
+// and function addresses are interchangeable. Clang rejects those implicit
+// conversions, so the wasm build rewrites stores and casts through these.
+template <class Dest, class From>
+inline auto ghidra_asg(From x) {
+	using To = std::remove_cv_t<std::remove_reference_t<Dest>>;
+	using FromD = std::remove_cv_t<std::remove_reference_t<From>>;
+	if constexpr (std::is_same<To, FromD>::value) {
+		return x;
+	} else if constexpr (std::is_pointer<To>::value) {
+		if constexpr (std::is_pointer<From>::value)
+			return (To)x;
+		else if constexpr (std::is_integral<From>::value)
+			return (To)(uintptr_t)(uint32_t)x;
+		else if constexpr (std::is_floating_point<From>::value) {
+			uint32_t b = 0;
+			float f = (float)x;
+			std::memcpy(&b, &f, 4);
+			return (To)(uintptr_t)b;
+		} else
+			return (To)(uintptr_t)(uint32_t)(int)x;
+	} else if constexpr (std::is_integral<To>::value) {
+		if constexpr (std::is_pointer<From>::value)
+			return (To)(uintptr_t)x;
+		else if constexpr (std::is_integral<From>::value)
+			return (To)x;
+		else if constexpr (std::is_floating_point<From>::value)
+			return (To)x;
+		else
+			return (To)(uint32_t)(int)x;
+	} else if constexpr (std::is_floating_point<To>::value) {
+		if constexpr (std::is_pointer<From>::value) {
+			uint32_t b = (uint32_t)(uintptr_t)x;
+			float f = 0;
+			std::memcpy(&f, &b, 4);
+			return (To)f;
+		} else
+			return (To)x;
+	} else {
+		return x;
+	}
+}
+
+template <class To, class From>
+inline To ghidra_trunc(From x) {
+	if constexpr (std::is_pointer<From>::value)
+		return (To)(uintptr_t)x;
+	else if constexpr (std::is_integral<From>::value)
+		return (To)x;
+	else if constexpr (std::is_floating_point<From>::value)
+		return (To)x;
+	else
+		return (To)(uintptr_t)(unsigned)(int)x;
+}
+
+template <class To, class From>
+inline To ghidra_ctor(From x) {
+	if constexpr (std::is_pointer<From>::value)
+		return To((uintptr_t)x);
+	else if constexpr (std::is_integral<From>::value)
+		return To(x);
+	else if constexpr (std::is_floating_point<From>::value)
+		return To(x);
+	else
+		return To((unsigned)(int)x);
+}
+
+template <class T>
+inline uintptr_t ghidra_addr(T x) {
+	if constexpr (std::is_pointer<T>::value)
+		return (uintptr_t)x;
+	else if constexpr (std::is_integral<T>::value)
+		return (uintptr_t)(uint32_t)x;
+	else
+		return (uintptr_t)(uint32_t)(int)x;
+}
+
+template <class A, class B>
+inline bool ghidra_lt(A a, B b) {
+	if constexpr (std::is_pointer<A>::value || std::is_pointer<B>::value)
+		return ghidra_addr(a) < ghidra_addr(b);
+	else
+		return a < b;
+}
+template <class A, class B>
+inline bool ghidra_gt(A a, B b) {
+	if constexpr (std::is_pointer<A>::value || std::is_pointer<B>::value)
+		return ghidra_addr(a) > ghidra_addr(b);
+	else
+		return a > b;
+}
+template <class A, class B>
+inline bool ghidra_le(A a, B b) {
+	if constexpr (std::is_pointer<A>::value || std::is_pointer<B>::value)
+		return ghidra_addr(a) <= ghidra_addr(b);
+	else
+		return a <= b;
+}
+template <class A, class B>
+inline bool ghidra_ge(A a, B b) {
+	if constexpr (std::is_pointer<A>::value || std::is_pointer<B>::value)
+		return ghidra_addr(a) >= ghidra_addr(b);
+	else
+		return a >= b;
+}
+template <class A, class B>
+inline bool ghidra_eq(A a, B b) {
+	if constexpr (std::is_pointer<A>::value || std::is_pointer<B>::value)
+		return ghidra_addr(a) == ghidra_addr(b);
+	else
+		return a == b;
+}
+template <class A, class B>
+inline bool ghidra_ne(A a, B b) {
+	if constexpr (std::is_pointer<A>::value || std::is_pointer<B>::value)
+		return ghidra_addr(a) != ghidra_addr(b);
+	else
+		return a != b;
+}
+
 template <class T>
 inline unsigned in(T) { return 0; }
 template <class T, class U>
 inline void out(T, U) {}
+
+// Win32 import thunks and the image relocation pass used by the wasm build.
+void ghidra_register(uint32_t va, void *fn);
+void ghidra_relocate();
+uintptr_t efw_imp_dispatch(const char *name, int argc, uintptr_t *args);
+
+template <class T>
+inline uintptr_t efw_bits(T x) {
+	if constexpr (std::is_pointer<T>::value)
+		return (uintptr_t)x;
+	else if constexpr (std::is_floating_point<T>::value) {
+		float f = (float)x;
+		uint32_t b = 0;
+		std::memcpy(&b, &f, 4);
+		return b;
+	} else if constexpr (std::is_integral<T>::value)
+		return (uintptr_t)(uint32_t)x;
+	else
+		return (uintptr_t)(uint32_t)(int)x;
+}
+
+template <class... A>
+inline uintptr_t efw_imp(const char *name, A... a) {
+	if constexpr (sizeof...(A) == 0)
+		return efw_imp_dispatch(name, 0, nullptr);
+	else {
+		uintptr_t args[] = {efw_bits(a)...};
+		return efw_imp_dispatch(name, (int)sizeof...(A), args);
+	}
+}

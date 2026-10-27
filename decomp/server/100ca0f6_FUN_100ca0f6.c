@@ -1,5 +1,5 @@
 
-void __cdecl FUN_100ca0f6(uint *param_1)
+void * __cdecl FUN_100ca0f6(uint *param_1)
 
 {
   int *piVar1;
@@ -24,7 +24,7 @@ void __cdecl FUN_100ca0f6(uint *param_1)
       FUN_100ca15d();
       if (piVar1 != (int *)0x0) {
         ExceptionList = local_14;
-        return;
+        return piVar1;
       }
     }
   }
@@ -47,7 +47,7 @@ void __cdecl FUN_100ca0f6(uint *param_1)
         FUN_100ca1bc();
         if (piVar1 != (int *)0x0) {
           ExceptionList = local_14;
-          return;
+          return piVar1;
         }
       }
       goto LAB_100ca1d5;
@@ -58,8 +58,8 @@ void __cdecl FUN_100ca0f6(uint *param_1)
   }
   dwBytes = (int)param_1 + 0xfU & 0xfffffff0;
 LAB_100ca1d5:
-  HeapAlloc(DAT_10136204,0,dwBytes);
+  piVar1 = (int *)HeapAlloc(DAT_10136204,0,dwBytes);
   ExceptionList = local_14;
-  return;
+  return piVar1;
 }
 
