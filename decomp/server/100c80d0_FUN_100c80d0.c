@@ -1,12 +1,8 @@
-
 void FUN_100c80d0(void)
 
 {
-  byte *in_stack_00001004;
-  
-  FUN_100c9600();
-  FUN_100c96fb(&stack0x00000000,in_stack_00001004,(undefined4 *)&stack0x00001008);
-  OutputDebugStringA(&stack0x00000000);
+  // Debug print. The body is a 4KB stack probe plus OutputDebugString, and the
+  // probe was recovered as an uninitialized register, which traps. The messages
+  // are not part of play.
   return;
 }
-
