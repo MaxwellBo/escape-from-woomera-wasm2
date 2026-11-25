@@ -12,4 +12,6 @@ npm start
 
 Open the printed local URL. Click the view, walk with WASD, and press E to talk or use something in front of you. Number keys pick a dialogue line.
 
-`scripts/build-wasm.sh` rebuilds `public/dlls/hl_emscripten_wasm32.wasm` and `public/cl_dlls/client_emscripten_wasm32.wasm` with Emscripten 4.0.17. The engine wasm in `public/` comes from the npm package.
+`npm run e2e` plays the prototype from the introduction to the positive ending in headless Chromium against a running `npm run dev` (`--video DIR` records it). It needs `npx playwright install chromium` once.
+
+`scripts/build-wasm.sh` rebuilds `public/dlls/hl_emscripten_wasm32.wasm` and `public/cl_dlls/client_emscripten_wasm32.wasm` with Emscripten 4.0.17. The engine wasm in `public/` comes from the npm package. `decomp/classification/` sorts every function in the two DLLs into Spirit of Half-Life code, Spirit code the mod changed, mod code, and the C runtime.

@@ -225,6 +225,28 @@ index c51b1dd..4f056f6 100644
  	//ALERT( at_console, "SV_Physics( %g, frametime %g )\n", gpGlobals->time, gpGlobals->frametime );
  
  	if( g_pGameRules )
+diff --git a/dlls/monsters.cpp b/dlls/monsters.cpp
+index 4107a12..39c718b 100644
+--- a/dlls/monsters.cpp
++++ b/dlls/monsters.cpp
+@@ -2133,14 +2133,9 @@ void CBaseMonster::StartMonster( void )
+ 	SetThink( &CBaseMonster::CallMonsterThink );
+ 	AbsoluteNextThink( m_fNextThink + RANDOM_FLOAT( 0.1f, 0.4f ) ); // spread think times.
+ 
+-	// Vit_amiN: fixed -- now it doesn't touch any scripted_sequence target
+-	if( !FStringNull( pev->targetname ) && !m_pCine )// wait until triggered
+-	{
+-		SetState( MONSTERSTATE_IDLE );
+-		// UNDONE: Some scripted sequence monsters don't have an idle?
+-		SetActivity( ACT_IDLE );
+-		ChangeSchedule( GetScheduleOfType( SCHED_WAIT_TRIGGER ) );
+-	}
++	// Escape from Woomera (0x1005f990) has no wait-until-triggered step: every
++	// character is named for its conversations, and path_corner patrols such
++	// as the electrician's must start on their own.
+ }
+ 
+ void CBaseMonster::MovementComplete( void ) 
 diff --git a/dlls/player.cpp b/dlls/player.cpp
 index 30d167e..d128f23 100644
 --- a/dlls/player.cpp

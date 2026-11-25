@@ -63,16 +63,17 @@ const engine = new Xash3D({
     "-clientlib", "cl_dlls/client_emscripten_wasm32.wasm",
     "-menulib", "cl_dlls/menu_emscripten_wasm32.wasm",
     "+developer", "1",
+    ...(testMode ? ["-dev", "2", "-log"] : []),
   ],
   module: {
     print: (line) => {
       logs.push(String(line));
-      if (logs.length > 400) logs.shift();
+      if (logs.length > (testMode ? 20000 : 400)) logs.shift();
       console.log(line);
     },
     printErr: (line) => {
       logs.push(String(line));
-      if (logs.length > 400) logs.shift();
+      if (logs.length > (testMode ? 20000 : 400)) logs.shift();
       console.error(line);
     },
   },
