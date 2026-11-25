@@ -7,12 +7,14 @@
     "test": "node --test",
     "dev": "vite",
     "start": "vite",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "e2e": "node e2e/playthrough.mjs"
   },
   "dependencies": {
     "xash3d-fwgs": "^1.2.2"
   },
   "devDependencies": {
+    "playwright": "^1.65.1",
     "vite": "^8.3.4"
   }
 }
