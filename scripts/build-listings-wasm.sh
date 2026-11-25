@@ -1,5 +1,5 @@
 #!/bin/sh
-# Rebuild the decompiled Escape from Woomera server and client as Xash
+# Compile the Ghidra listings of the Escape from Woomera server and client as Xash
 # side modules. Requires Emscripten 4.0.17. The engine is the published
 # xash3d-fwgs 1.2.2 package; this script does not rebuild it.
 set -eu
