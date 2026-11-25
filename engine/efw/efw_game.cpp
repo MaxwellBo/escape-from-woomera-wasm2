@@ -204,12 +204,31 @@ static int topic_on(const char *name)
 	return 0;
 }
 
+// FUN_100c35e0. The topic map is a std::map, so the dump is in name order.
+static void print_narrative()
+{
+	int order[MAX_TOPICS];
+	for (int i = 0; i < g_ntopics; i++) {
+		int j = i;
+		while (j > 0 && strcmp(g_topics[order[j - 1]].name, g_topics[i].name) > 0) {
+			order[j] = order[j - 1];
+			j--;
+		}
+		order[j] = i;
+	}
+	ALERT(at_console, "Narrative state:\n");
+	for (int i = 0; i < g_ntopics; i++)
+		ALERT(at_console, "%d  %s\n", g_topics[order[i]].on, g_topics[order[i]].name);
+}
+
 static void set_topic(const char *name, int on)
 {
 	if (!name || !name[0]) return;
 	for (int i = 0; i < g_ntopics; i++) {
 		if (!strcmp(g_topics[i].name, name)) {
+			if (g_topics[i].on == on) return;
 			g_topics[i].on = on;
+			print_narrative();
 			return;
 		}
 	}
@@ -217,6 +236,7 @@ static void set_topic(const char *name, int on)
 	copy_cap(g_topics[g_ntopics].name, 32, name);
 	g_topics[g_ntopics].on = on;
 	g_ntopics++;
+	print_narrative();
 }
 
 static int seen_key(const char *partner, const char *topic)
@@ -515,11 +535,9 @@ static int level_from_map(const char *name)
 
 static int detect_level()
 {
-	if (!g_mapName[0]) {
-		const char *engine = STRING(gpGlobals->mapname);
-		if (level_from_map(engine))
-			copy_cap(g_mapName, sizeof(g_mapName), engine);
-	}
+	const char *engine = STRING(gpGlobals->mapname);
+	if (level_from_map(engine))
+		copy_cap(g_mapName, sizeof(g_mapName), engine);
 	return level_from_map(g_mapName);
 }
 
@@ -550,10 +568,6 @@ static void change_map(const char *map)
 	g_caught = 0;
 	g_annReady = 0;
 	g_paused = 0;
-	if (map && map[0]) {
-		copy_cap(g_mapName, sizeof(g_mapName), map);
-		gpGlobals->mapname = ALLOC_STRING(map);
-	}
 	CHANGE_LEVEL((char *)map, NULL);
 }
 
@@ -981,6 +995,7 @@ static void dismiss_board(CBasePlayer *player);
 
 static void present_menu(CBasePlayer *player, int id)
 {
+	ALERT(at_console, "efw menu 0x%x\n", id);
 	if (id == 0x3f || id == 0x43) add_hope(HOPE_BONUS);
 	const char *caption = menu_caption(id);
 	if (caption && !menu_sprite(id)) {
@@ -1046,6 +1061,11 @@ static void open_topics(CBasePlayer *player, const char *targetname)
 	}
 	g_talking = 1;
 	g_mode = 0;
+	for (int c = 0; c < g_nchoices; c++) {
+		int e = g_choiceEntry[c];
+		ALERT(at_console, "efw choice %d %s\n", c + 1,
+			e >= 0 ? script->entries[e].topic : e == -1 ? "*GIVE_PLIERS" : e == -2 ? "*GIVE_PHONE" : "*GIVE_POWDER");
+	}
 	send_panel(player);
 }
 
@@ -1699,6 +1719,50 @@ static void use_with_marker(CBasePlayer *player, const char *cls, const char *ma
 		place_id_tag(player, 1);
 }
 
+// Developer aid, sv_cheats only: stand the player on the floor inside a named
+// marker or trigger, or beside a named character, facing it.
+static void goto_named(CBasePlayer *player, const char *name)
+{
+	CBaseEntity *ent = UTIL_FindEntityByTargetname(NULL, name);
+	if (!ent) {
+		CBaseEntity *trig = NULL;
+		while ((trig = UTIL_FindEntityByClassname(trig, "trigger_multiple")) != NULL)
+			if (!strcmp(trigger_label(trig), name)) break;
+		ent = trig;
+	}
+	if (!ent) {
+		ALERT(at_console, "efw_goto: no %s\n", name);
+		return;
+	}
+	TraceResult tr;
+	Vector center = (ent->pev->absmin + ent->pev->absmax) * 0.5f;
+	Vector spot = center;
+	if (ent->pev->flags & FL_MONSTER) {
+		spot = ent->pev->origin + Vector(0, 0, 36);
+		for (int i = 0; i < 16; i++) {
+			float yaw = (i % 8) * 0.78539816f;
+			float dist = i < 8 ? 64.0f : 96.0f;
+			Vector at = spot + Vector(cos(yaw) * dist, sin(yaw) * dist, 0);
+			UTIL_TraceHull(at, at, dont_ignore_monsters, human_hull, ent->edict(), &tr);
+			if (tr.fStartSolid || tr.fAllSolid) continue;
+			UTIL_TraceLine(at, spot, ignore_monsters, ent->edict(), &tr);
+			if (tr.flFraction < 1.0f) continue;
+			spot = at;
+			break;
+		}
+	} else {
+		UTIL_TraceHull(center, center - Vector(0, 0, 512), ignore_monsters, human_hull, player->edict(), &tr);
+		if (!tr.fStartSolid && !tr.fAllSolid) spot = tr.vecEndPos;
+	}
+	Vector face = UTIL_VecToAngles(center - spot);
+	UTIL_SetOrigin(player, spot);
+	player->pev->velocity = g_vecZero;
+	player->pev->angles = Vector(0, face.y, 0);
+	player->pev->v_angle = player->pev->angles;
+	player->pev->fixangle = 1;
+	ALERT(at_console, "efw_goto %s %.0f %.0f %.0f\n", name, spot.x, spot.y, spot.z);
+}
+
 int Efw_ClientCommand(edict_t *pent)
 {
 	if (!pent || !pent->pvPrivateData) return 0;
@@ -1771,6 +1835,9 @@ int Efw_ClientCommand(edict_t *pent)
 		set_topic(CMD_ARGV(1), on);
 	} else if (!strcmp(cmd, "efw_spider")) {
 		try_interact(player);
+	} else if (!strcmp(cmd, "efw_goto") && CMD_ARGC() > 1) {
+		if (CVAR_GET_FLOAT("sv_cheats"))
+			goto_named(player, CMD_ARGV(1));
 	}
 	return 1;
 }
